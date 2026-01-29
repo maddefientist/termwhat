@@ -91,6 +91,15 @@ termwhat compress this folder
 termwhat --copy check disk usage  # copies command to clipboard
 ```
 
+**Brief mode** (just the command, no explanation):
+```bash
+termwhat --brief "how to list running processes"
+# Output: ps aux
+
+termwhat -b "compress this folder"
+# Output: tar -czf folder.tar.gz folder/
+```
+
 **Use a specific provider:**
 ```bash
 termwhat --provider openai "how do I configure nginx"
@@ -105,6 +114,7 @@ termwhat
 This drops you into a REPL where you can have a conversation. Type `/help` for commands, `/exit` to quit.
 
 **REPL commands**:
+- `/term <question>` - brief mode: output only the command
 - `/provider [name]` - switch providers (ollama, openai, anthropic, openrouter)
 - `/provider list` - list available providers
 - `/model [name]` - switch models
@@ -135,6 +145,7 @@ termwhat --host http://192.168.1.100:11434 "your question"  # for Ollama
 - `-p, --provider <type>` - provider to use (ollama, openai, anthropic, openrouter)
 - `-H, --host <url>` - Ollama host (backward compatible)
 - `-m, --model <name>` - model to use
+- `-b, --brief` - brief mode: output only the command(s)
 - `-j, --json` - raw JSON output
 - `-c, --copy` - copy first command to clipboard
 - `--doctor` - run diagnostics
