@@ -13,7 +13,7 @@ const colors = {
   gray: NO_COLOR ? '' : '\x1b[90m',
 };
 
-export function renderResponse(jsonString: string): string {
+export function renderResponse(jsonString: string, brief: boolean = false): string {
   let response: TermwhatResponse;
 
   try {
@@ -28,7 +28,18 @@ export function renderResponse(jsonString: string): string {
     return renderParseError(jsonString, new Error('Invalid response structure'));
   }
 
-  return formatResponse(response);
+  return brief ? formatBriefResponse(response) : formatResponse(response);
+}
+
+function formatBriefResponse(response: TermwhatResponse): string {
+  // Return just the command(s), one per line
+  if (response.commands.length === 0) {
+    return 'No commands found';
+  }
+
+  // Return first command, or first two if there are alternatives
+  const commandsToShow = response.commands.slice(0, Math.min(2, response.commands.length));
+  return commandsToShow.map(cmd => cmd.command).join('\n');
 }
 
 function isValidResponse(obj: any): obj is TermwhatResponse {

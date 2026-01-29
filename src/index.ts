@@ -44,6 +44,7 @@ program
   .option('-p, --provider <type>', 'Provider to use (ollama, openai, anthropic, openrouter)')
   .option('-H, --host <url>', 'Ollama host URL (backward compatible)')
   .option('-m, --model <name>', 'Model to use')
+  .option('-b, --brief', 'Brief mode: output only the command(s)')
   .option('-j, --json', 'Output raw JSON')
   .option('-c, --copy', 'Copy primary command to clipboard')
   .option('--doctor', 'Run connectivity diagnostics')
@@ -103,7 +104,7 @@ program
 async function handleOneShotQuery(
   question: string,
   provider: AIProvider,
-  options: { json?: boolean; copy?: boolean }
+  options: { json?: boolean; copy?: boolean; brief?: boolean }
 ): Promise<void> {
   try {
     const messages = [
@@ -119,8 +120,8 @@ async function handleOneShotQuery(
       return;
     }
 
-    // Pretty print
-    const output = renderResponse(response);
+    // Pretty print (brief or full)
+    const output = renderResponse(response, options.brief);
     console.log(output);
 
     // Copy to clipboard if requested

@@ -56,7 +56,7 @@ export async function startRepl(initialProvider: AIProvider, config: TermwhatCon
     }
 
     // Regular question - query provider
-    await handleQuestion(input, state.provider, conversationHistory);
+    await handleQuestion(input, state.provider, conversationHistory, false);
     rl.prompt();
   });
 
@@ -96,6 +96,17 @@ async function handleCommand(
     case 'exit':
     case 'quit':
       rl.close();
+      break;
+
+    case 'term':
+      // Brief mode - just output the command
+      if (args.length === 0) {
+        console.log('Usage: /term <question>');
+        console.log('Example: /term how to list running processes');
+      } else {
+        const question = args.join(' ');
+        await handleQuestion(question, state.provider, history, true);
+      }
       break;
 
     case 'provider':
@@ -218,7 +229,8 @@ async function handleCommand(
 async function handleQuestion(
   question: string,
   provider: AIProvider,
-  history: ConversationMessage[]
+  history: ConversationMessage[],
+  brief: boolean = false
 ): Promise<void> {
   // Add user message to history
   history.push({ role: 'user', content: question });
@@ -244,8 +256,8 @@ async function handleQuestion(
     // Add assistant response to history
     history.push({ role: 'assistant', content: rawResponse });
 
-    // Render the response
-    const output = renderResponse(rawResponse);
+    // Render the response (brief or full)
+    const output = renderResponse(rawResponse, brief);
     console.log(output);
   } catch (error) {
     stopSpinner();
@@ -259,6 +271,7 @@ function showHelp(): void {
   console.log('Available commands:');
   console.log('  /help                   Show this help message');
   console.log('  /exit, /quit            Exit REPL mode');
+  console.log('  /term <question>        Brief mode: output only the command');
   console.log('  /provider [name]        Show or switch provider');
   console.log('  /provider list          List all available providers');
   console.log('  /model [name]           Show or set the model');
