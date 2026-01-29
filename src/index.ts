@@ -4,13 +4,14 @@ import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { OllamaClient } from './ollama.js';
+import { AIProviderFactory } from './providers/index.js';
+import type { AIProvider } from './providers/index.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { renderResponse } from './render.js';
 import { copyToClipboard } from './clipboard.js';
 import { runDoctor } from './doctor.js';
 import { startRepl } from './repl.js';
-import { loadConfig, runSetup, configExists } from './config.js';
+import { loadConfig, runSetup, configExists, getProviderConfig } from './config.js';
 import type { TermwhatResponse } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,7 +26,7 @@ const program = new Command();
 
 program
   .name('termwhat')
-  .description('AI-powered terminal command suggestions via Ollama')
+  .description('AI-powered terminal command suggestions with multi-provider support')
   .version(packageJson.version);
 
 // Setup command
@@ -40,7 +41,8 @@ program
 // Main command
 program
   .argument('[question...]', 'Question to ask (if omitted, enters REPL mode)')
-  .option('-H, --host <url>', 'Ollama host URL')
+  .option('-p, --provider <type>', 'Provider to use (ollama, openai, anthropic, openrouter)')
+  .option('-H, --host <url>', 'Ollama host URL (backward compatible)')
   .option('-m, --model <name>', 'Model to use')
   .option('-j, --json', 'Output raw JSON')
   .option('-c, --copy', 'Copy primary command to clipboard')
@@ -50,7 +52,7 @@ program
     if (!configExists()) {
       console.log('👋 Welcome to termwhat!\n');
       console.log('Looks like this is your first time running termwhat.');
-      console.log('Let\'s set up your Ollama connection.\n');
+      console.log('Let\'s set up your configuration.\n');
       await runSetup(false);
       console.log('Setup complete! You can now use termwhat.\n');
     }
@@ -58,16 +60,31 @@ program
     // Load config
     const config = loadConfig();
 
-    // CLI options override config
-    const client = new OllamaClient({
-      host: options.host || config.ollamaHost,
-      model: options.model || config.model,
-      timeout: config.timeout,
-    });
+    // Get provider config with environment variable overrides
+    let providerConfig = getProviderConfig(config, options.provider);
+
+    // Apply CLI options (highest priority)
+    if (options.host && providerConfig.provider === 'ollama') {
+      providerConfig = { ...providerConfig, host: options.host };
+    }
+    if (options.model) {
+      providerConfig = { ...providerConfig, model: options.model };
+    }
+
+    // Create provider instance
+    let provider: AIProvider;
+    try {
+      provider = AIProviderFactory.create(providerConfig);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error: ${message}`);
+      console.error('\nRun "termwhat setup" to configure providers.');
+      process.exit(1);
+    }
 
     // Run doctor mode
     if (options.doctor) {
-      await runDoctor(client);
+      await runDoctor(provider);
       return;
     }
 
@@ -75,17 +92,17 @@ program
 
     // If no question provided, enter REPL mode
     if (!question) {
-      await startRepl(client);
+      await startRepl(provider, config);
       return;
     }
 
     // One-shot mode
-    await handleOneShotQuery(question, client, options);
+    await handleOneShotQuery(question, provider, options);
   });
 
 async function handleOneShotQuery(
   question: string,
-  client: OllamaClient,
+  provider: AIProvider,
   options: { json?: boolean; copy?: boolean }
 ): Promise<void> {
   try {
@@ -94,7 +111,7 @@ async function handleOneShotQuery(
       { role: 'user' as const, content: question },
     ];
 
-    const response = await client.chat(messages);
+    const response = await provider.chat(messages);
 
     // JSON output mode
     if (options.json) {

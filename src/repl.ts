@@ -1,21 +1,35 @@
 import * as readline from 'readline';
-import { OllamaClient } from './ollama.js';
+import type { AIProvider } from './providers/index.js';
+import { AIProviderFactory } from './providers/index.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { renderResponse, renderSpinner } from './render.js';
 import { runDoctor } from './doctor.js';
-import type { ConversationMessage } from './types.js';
+import { saveConfig } from './config.js';
+import type { ConversationMessage, TermwhatConfig } from './types.js';
 
 const MAX_HISTORY = 10;
 
-export async function startRepl(client: OllamaClient): Promise<void> {
+interface ReplState {
+  provider: AIProvider;
+  config: TermwhatConfig;
+  currentProviderName: string;
+}
+
+export async function startRepl(initialProvider: AIProvider, config: TermwhatConfig): Promise<void> {
   const conversationHistory: ConversationMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
   ];
 
+  const state: ReplState = {
+    provider: initialProvider,
+    config,
+    currentProviderName: config.currentProvider,
+  };
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: '> ',
+    prompt: getPrompt(state.provider),
   });
 
   console.log('');
@@ -35,13 +49,14 @@ export async function startRepl(client: OllamaClient): Promise<void> {
 
     // Handle REPL commands
     if (input.startsWith('/')) {
-      await handleCommand(input, client, conversationHistory, rl);
+      await handleCommand(input, state, conversationHistory, rl);
+      rl.setPrompt(getPrompt(state.provider));
       rl.prompt();
       return;
     }
 
-    // Regular question - query Ollama
-    await handleQuestion(input, client, conversationHistory);
+    // Regular question - query provider
+    await handleQuestion(input, state.provider, conversationHistory);
     rl.prompt();
   });
 
@@ -57,9 +72,15 @@ export async function startRepl(client: OllamaClient): Promise<void> {
   });
 }
 
+function getPrompt(provider: AIProvider): string {
+  const providerType = provider.getProviderType();
+  const model = provider.getModelName();
+  return `[${providerType}:${model}]> `;
+}
+
 async function handleCommand(
   command: string,
-  client: OllamaClient,
+  state: ReplState,
   history: ConversationMessage[],
   rl: readline.Interface
 ): Promise<void> {
@@ -77,23 +98,100 @@ async function handleCommand(
       rl.close();
       break;
 
+    case 'provider':
+      if (args.length === 0) {
+        console.log(`Current provider: ${state.currentProviderName}`);
+        console.log('\nAvailable providers:');
+        Object.keys(state.config.providers).forEach(name => {
+          const p = state.config.providers[name];
+          const marker = name === state.currentProviderName ? ' (current)' : '';
+          console.log(`  • ${name} (${p.provider}, model: ${p.model})${marker}`);
+        });
+      } else if (args[0] === 'list') {
+        console.log('Available providers:');
+        Object.keys(state.config.providers).forEach(name => {
+          const p = state.config.providers[name];
+          const marker = name === state.currentProviderName ? ' (current)' : '';
+          console.log(`  • ${name} (${p.provider}, model: ${p.model})${marker}`);
+        });
+      } else {
+        const newProviderName = args[0];
+        if (!state.config.providers[newProviderName]) {
+          console.log(`Error: Provider "${newProviderName}" not found.`);
+          console.log('Run "/provider list" to see available providers.');
+          break;
+        }
+
+        try {
+          const newProviderConfig = state.config.providers[newProviderName];
+          const newProvider = AIProviderFactory.create(newProviderConfig);
+          state.provider = newProvider;
+          state.currentProviderName = newProviderName;
+          state.config.currentProvider = newProviderName;
+          saveConfig(state.config);
+          console.log(`Provider set to: ${newProviderName} (${newProviderConfig.provider}, model: ${newProviderConfig.model})`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Error switching provider: ${message}`);
+        }
+      }
+      break;
+
+    case 'models':
+      try {
+        console.log('Fetching available models...');
+        const models = await state.provider.listModels();
+        console.log('\nAvailable models:');
+        models.forEach(model => {
+          const marker = model === state.provider.getModelName() ? ' (current)' : '';
+          console.log(`  • ${model}${marker}`);
+        });
+        console.log('');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Error listing models: ${message}`);
+      }
+      break;
+
     case 'model':
       if (args.length === 0) {
-        const config = client.getConfig();
-        console.log(`Current model: ${config.model}`);
+        console.log(`Current model: ${state.provider.getModelName()}`);
       } else {
-        client.updateConfig({ model: args[0] });
-        console.log(`Model set to: ${args[0]}`);
+        const newModel = args[0];
+        state.provider.updateConfig({ model: newModel });
+
+        // Update config file
+        const providerConfig = state.config.providers[state.currentProviderName];
+        if (providerConfig) {
+          providerConfig.model = newModel;
+          saveConfig(state.config);
+        }
+
+        console.log(`Model set to: ${newModel}`);
       }
       break;
 
     case 'host':
+      if (state.provider.getProviderType() !== 'ollama') {
+        console.log('The /host command is only available for the Ollama provider.');
+        break;
+      }
+
       if (args.length === 0) {
-        const config = client.getConfig();
+        const config = state.provider.getConfig();
         console.log(`Current host: ${config.host}`);
       } else {
-        client.updateConfig({ host: args[0] });
-        console.log(`Host set to: ${args[0]}`);
+        const newHost = args[0];
+        state.provider.updateConfig({ host: newHost });
+
+        // Update config file
+        const providerConfig = state.config.providers[state.currentProviderName];
+        if (providerConfig && providerConfig.provider === 'ollama') {
+          providerConfig.host = newHost;
+          saveConfig(state.config);
+        }
+
+        console.log(`Host set to: ${newHost}`);
       }
       break;
 
@@ -108,7 +206,7 @@ async function handleCommand(
       break;
 
     case 'doctor':
-      await runDoctor(client);
+      await runDoctor(state.provider);
       break;
 
     default:
@@ -119,7 +217,7 @@ async function handleCommand(
 
 async function handleQuestion(
   question: string,
-  client: OllamaClient,
+  provider: AIProvider,
   history: ConversationMessage[]
 ): Promise<void> {
   // Add user message to history
@@ -134,9 +232,11 @@ async function handleQuestion(
   let rawResponse = '';
 
   try {
-    rawResponse = await client.chat(history, (chunk) => {
-      // We collect chunks but don't display them in streaming mode
-      // to avoid JSON parsing issues mid-stream
+    rawResponse = await provider.chat(history, {
+      onChunk: (chunk) => {
+        // We collect chunks but don't display them in streaming mode
+        // to avoid JSON parsing issues mid-stream
+      }
     });
 
     stopSpinner();
@@ -157,13 +257,16 @@ async function handleQuestion(
 function showHelp(): void {
   console.log('');
   console.log('Available commands:');
-  console.log('  /help              Show this help message');
-  console.log('  /exit, /quit       Exit REPL mode');
-  console.log('  /model [name]      Show or set the model');
-  console.log('  /host [url]        Show or set the Ollama host');
-  console.log('  /history           Show conversation history');
-  console.log('  /clear             Clear conversation context');
-  console.log('  /doctor            Run health check diagnostics');
+  console.log('  /help                   Show this help message');
+  console.log('  /exit, /quit            Exit REPL mode');
+  console.log('  /provider [name]        Show or switch provider');
+  console.log('  /provider list          List all available providers');
+  console.log('  /model [name]           Show or set the model');
+  console.log('  /models                 List available models for current provider');
+  console.log('  /host [url]             Show or set the Ollama host (Ollama only)');
+  console.log('  /history                Show conversation history');
+  console.log('  /clear                  Clear conversation context');
+  console.log('  /doctor                 Run health check diagnostics');
   console.log('');
   console.log('Any other input will be treated as a question.');
   console.log('');
