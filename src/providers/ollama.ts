@@ -130,6 +130,7 @@ export class OllamaProvider extends BaseAIProvider {
         stream: true,
         options: {
           temperature: 0.7,
+          num_predict: 2048, // Allow longer responses for complete JSON
         },
       });
 
@@ -157,6 +158,7 @@ export class OllamaProvider extends BaseAIProvider {
       stream: false,
       options: {
         temperature: 0.7,
+        num_predict: 2048, // Allow longer responses for complete JSON
       },
     });
 
@@ -178,7 +180,10 @@ export class OllamaProvider extends BaseAIProvider {
         messages: messages.map(m => ({ role: m.role, content: m.content })),
         format: 'json',
         stream: !!onChunk,
-        options: { temperature: 0.7 },
+        options: {
+          temperature: 0.7,
+          num_predict: 2048, // Allow longer responses for complete JSON
+        },
       }),
       signal,
     });
