@@ -2,7 +2,7 @@
 
 Stop googling "how to [insert command here]" and just ask your terminal instead.
 
-This is a CLI that uses Ollama to suggest terminal commands in plain English. It runs locally, keeps your data private, and won't execute anything without your permission.
+Uses Ollama to suggest terminal commands in plain English. Runs locally, keeps your data private, never executes anything without permission.
 
 ## Why?
 
@@ -11,27 +11,32 @@ Because I got tired of:
 - Forgetting obscure flags for `tar`, `find`, `lsof`, etc.
 - Wondering if that random internet command is safe to run
 
-Now I just type `termwhat "kill process on port 3000"` and get safe suggestions with explanations.
+Now I just type `termwhat command to kill process on port 3000` and get safe suggestions with explanations.
 
-## Install
+## Quick Install
 
 Requires Node.js 20+ and [Ollama](https://ollama.ai/) running locally.
 
+**One-line install:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/maddefientist/termwhat/main/install.sh | bash
+```
+
+**Or with git:**
 ```bash
 git clone https://github.com/maddefientist/termwhat.git
 cd termwhat
 ./install.sh
 ```
 
-The installer will ask if you want to install globally. Say yes to use `termwhat` from anywhere.
-
-On first run, it'll ask for your Ollama URL (defaults to `http://localhost:11434`).
-
-Or use Docker:
-
+**Or with Docker:**
 ```bash
+git clone https://github.com/maddefientist/termwhat.git
+cd termwhat
 docker-compose up -d
 ```
+
+On first run, you'll be asked for your Ollama URL (defaults to `http://localhost:11434`).
 
 ## Usage
 
@@ -116,9 +121,7 @@ npm start
 ## Examples
 
 ```bash
-> npm start
-
-> how do I find files modified in the last 24 hours?
+$ termwhat how do I find files modified in the last 24 hours
 
 Find Recently Modified Files
 
@@ -132,14 +135,23 @@ Commands:
    find . -type f -mtime -1 -ls
    Shows detailed info including size and permissions
 
-> /exit
+Verification:
+  • Check if file count matches expectations
+```
+
+More examples:
+```bash
+termwhat command to kill all processes on port 3000
+termwhat how do I compress a folder into tar.gz
+termwhat show me all cloudflare tunnel IPs
+termwhat check which process is using most memory
 ```
 
 ## Troubleshooting
 
 **Ollama won't connect:**
 ```bash
-npm start -- --doctor
+termwhat --doctor
 ```
 
 This checks your connection and tells you what's wrong.
@@ -147,6 +159,12 @@ This checks your connection and tells you what's wrong.
 **Model not found:**
 ```bash
 ollama pull llama3.2
+ollama list  # see installed models
+```
+
+**Change Ollama URL:**
+```bash
+termwhat setup
 ```
 
 **Clipboard not working (Linux):**
