@@ -2,20 +2,21 @@
 
 ## What
 
-`termwhat` is a production-ready CLI tool that answers "what terminal command should I use for X?" by querying a local Ollama LLM instance. It provides structured, safe command suggestions with risk levels and explanations.
+`termwhat` is a production-ready CLI tool that answers "what terminal command should I use for X?" by querying AI providers (Ollama, OpenAI, Anthropic, OpenRouter). It provides structured, safe command suggestions with risk levels and explanations.
 
 ## Why
 
 - Quickly discover terminal commands without searching documentation
 - Get safe, validated suggestions with risk warnings
-- Privacy-first: runs entirely on local infrastructure via Ollama
+- Flexible: supports local Ollama or cloud AI providers
+- Privacy-first option: runs entirely on local infrastructure via Ollama
 - Network-accessible across home lab environment
 
 ## Stack
 
 - **Runtime:** Node.js 20+ (LTS)
 - **Language:** TypeScript (strict mode)
-- **LLM Backend:** Ollama (local)
+- **AI Providers:** Ollama (local), OpenAI, Anthropic, OpenRouter
 - **CLI Framework:** Commander.js
 - **Deployment:** Docker + Docker Compose
 
@@ -26,22 +27,29 @@
 │   termwhat  │  CLI (REPL or one-shot)
 └──────┬──────┘
        │
-       │ HTTP/JSON
+       │ Provider Abstraction Layer
        │
-┌──────▼──────┐
-│   Ollama    │  LLM inference engine
-│   Server    │  (llama3.2 or custom model)
-└─────────────┘
+       ├──────┬──────┬──────┬───────┐
+       │      │      │      │       │
+    Ollama OpenAI Anthropic OpenRouter
+     (local) (cloud) (cloud)  (cloud)
 ```
 
 ### Components
 
 - **src/index.ts** - CLI entry point, argument parsing
-- **src/ollama.ts** - Ollama client with library + fetch fallback
+- **src/providers/** - Provider abstraction layer
+  - **base.ts** - AIProvider interface and base class
+  - **ollama.ts** - Ollama provider (local LLM)
+  - **openai.ts** - OpenAI provider (GPT models)
+  - **anthropic.ts** - Anthropic provider (Claude models)
+  - **openrouter.ts** - OpenRouter provider (multi-model access)
+  - **factory.ts** - Provider instantiation factory
+- **src/config.ts** - Multi-provider configuration with migration
 - **src/prompt.ts** - System prompt defining response schema
 - **src/render.ts** - ANSI terminal output formatting
-- **src/repl.ts** - Interactive REPL mode
-- **src/doctor.ts** - Health check diagnostics
+- **src/repl.ts** - Interactive REPL mode with provider switching
+- **src/doctor.ts** - Provider-agnostic health check diagnostics
 - **src/clipboard.ts** - Cross-platform clipboard support
 - **src/types.ts** - TypeScript interfaces
 
@@ -80,10 +88,21 @@ docker-compose run --rm termwhat node dist/index.js "question"
 
 ### Configuration
 
-Environment variables (priority order):
-1. CLI flags (`--host`, `--model`)
-2. Environment variables (`TERMWHAT_OLLAMA_HOST`, `TERMWHAT_MODEL`)
-3. Defaults (Docker: `http://ollama:11434`, Local: `http://localhost:11434`)
+Configuration file: `~/.termwhatrc` (multi-provider JSON format)
+
+Environment variables:
+- `TERMWHAT_PROVIDER` - Override current provider
+- `TERMWHAT_MODEL` - Override model for any provider
+- `TERMWHAT_OLLAMA_HOST` - Ollama host (backward compatible)
+- `TERMWHAT_OPENAI_API_KEY` - OpenAI API key (required for OpenAI)
+- `TERMWHAT_ANTHROPIC_API_KEY` - Anthropic API key (required for Anthropic)
+- `TERMWHAT_OPENROUTER_API_KEY` - OpenRouter API key (required for OpenRouter)
+
+Priority order:
+1. CLI flags (`--provider`, `--host`, `--model`)
+2. Environment variables
+3. Config file `~/.termwhatrc`
+4. Defaults
 
 ## Security Constraints
 
@@ -120,21 +139,27 @@ interface CommandSuggestion {
 
 ## Current Status
 
-- ✅ Phase 1-10 complete
-- ✅ All files generated
+- ✅ Multi-provider support implemented (Ollama, OpenAI, Anthropic, OpenRouter)
+- ✅ Provider abstraction layer with factory pattern
+- ✅ Automatic config migration from legacy format
+- ✅ Enhanced setup wizard with API key management
+- ✅ REPL mode with provider switching
+- ✅ Provider-agnostic health checks
 - ✅ TypeScript compiles successfully
-- ✅ CLI interface working (--help, --version)
-- ⏳ Needs Ollama instance to test full functionality
+- ✅ Dependencies installed
+- ⏳ Needs testing with actual providers
 - ⏳ Docker images not yet built
 
 ## Next Steps
 
-1. Test with running Ollama instance
-2. Validate response parsing and rendering
-3. Test REPL mode interactivity
-4. Build and test Docker image
-5. Deploy to home network
-6. Test with remote Ollama on LAN
+1. Test backward compatibility with existing Ollama setups
+2. Test OpenAI provider integration
+3. Test Anthropic provider integration
+4. Test OpenRouter provider integration
+5. Test REPL provider switching
+6. Test config migration from old format
+7. Update Docker configuration for multi-provider support
+8. Deploy to home network
 
 ## Notes
 
