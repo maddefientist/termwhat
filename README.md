@@ -18,9 +18,14 @@ Now I just type `termwhat "kill process on port 3000"` and get safe suggestions 
 Requires Node.js 20+ and [Ollama](https://ollama.ai/) running locally.
 
 ```bash
-npm install
-npm run build
+git clone https://github.com/maddefientist/termwhat.git
+cd termwhat
+./install.sh
 ```
+
+The installer will ask if you want to install globally. Say yes to use `termwhat` from anywhere.
+
+On first run, it'll ask for your Ollama URL (defaults to `http://localhost:11434`).
 
 Or use Docker:
 
@@ -30,19 +35,20 @@ docker-compose up -d
 
 ## Usage
 
-**Interactive mode** (recommended):
+**One-shot queries** (just ask):
 ```bash
-npm start
+termwhat command to kill all processes on port 3000
+termwhat how do I find large files
+termwhat compress this folder
+termwhat --copy check disk usage  # copies command to clipboard
 ```
 
-This drops you into a REPL where you can ask questions. Type `/help` for commands, `/exit` to quit.
-
-**One-shot queries**:
+**Interactive mode**:
 ```bash
-npm start "find large files"
-npm start "compress this folder"
-npm start --copy "check disk usage"  # copies command to clipboard
+termwhat
 ```
+
+This drops you into a REPL where you can have a conversation. Type `/help` for commands, `/exit` to quit.
 
 **REPL commands**:
 - `/model [name]` - switch models (default: llama3.2)
@@ -53,24 +59,28 @@ npm start --copy "check disk usage"  # copies command to clipboard
 
 ## Configuration
 
-By default it expects Ollama at `http://localhost:11434`. Change it with:
+**First run setup:**
 
+On first use, termwhat asks for your Ollama URL and preferred model. Settings are saved to `~/.termwhatrc`.
+
+**Change settings anytime:**
 ```bash
-export TERMWHAT_OLLAMA_HOST=http://192.168.1.100:11434
-export TERMWHAT_MODEL=llama3.1
+termwhat setup
 ```
 
-Or use CLI flags:
+**Override per-query:**
 ```bash
-npm start --host http://192.168.1.100:11434 --model llama3.1 "your question"
+termwhat --host http://192.168.1.100:11434 --model llama3.1 "your question"
 ```
 
-Full options:
+**All options:**
 - `-H, --host <url>` - Ollama host
 - `-m, --model <name>` - model to use
 - `-j, --json` - raw JSON output
 - `-c, --copy` - copy first command to clipboard
 - `--doctor` - run diagnostics
+
+**Config file location:** `~/.termwhatrc`
 
 ## Docker
 
