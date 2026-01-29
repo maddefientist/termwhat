@@ -67,6 +67,9 @@ npm install --silent
 echo "🔨 Building..."
 npm run build --silent
 
+# Ensure CLI is executable
+chmod +x dist/index.js
+
 # Install globally
 echo "🔗 Installing globally..."
 npm link --silent
