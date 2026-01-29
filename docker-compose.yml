@@ -1,0 +1,44 @@
+services:
+  termwhat:
+    build: .
+    container_name: termwhat
+    environment:
+      - TERMWHAT_OLLAMA_HOST=${TERMWHAT_OLLAMA_HOST:-http://ollama:11434}
+      - TERMWHAT_MODEL=${TERMWHAT_MODEL:-llama3.2}
+      - TERMWHAT_TIMEOUT=${TERMWHAT_TIMEOUT:-60000}
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    networks:
+      - ollama-net
+    depends_on:
+      - ollama
+
+  # Optional: Include Ollama in same compose
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    networks:
+      - ollama-net
+    # Uncomment for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+networks:
+  ollama-net:
+    driver: bridge
+
+volumes:
+  ollama_data:
