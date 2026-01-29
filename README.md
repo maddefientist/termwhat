@@ -100,6 +100,18 @@ termwhat -b "compress this folder"
 # Output: tar -czf folder.tar.gz folder/
 ```
 
+**Pro tip:** Create a shell alias for even faster access:
+```bash
+# Add to your ~/.zshrc or ~/.bashrc:
+term() {
+  termwhat --brief "$@"
+}
+
+# Then use it anywhere:
+term list all hidden files
+term check disk usage
+```
+
 **Use a specific provider:**
 ```bash
 termwhat --provider openai "how do I configure nginx"
