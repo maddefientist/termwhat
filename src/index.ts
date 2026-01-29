@@ -10,6 +10,7 @@ import { renderResponse } from './render.js';
 import { copyToClipboard } from './clipboard.js';
 import { runDoctor } from './doctor.js';
 import { startRepl } from './repl.js';
+import { loadConfig, runSetup, configExists } from './config.js';
 import type { TermwhatResponse } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,17 +26,43 @@ const program = new Command();
 program
   .name('termwhat')
   .description('AI-powered terminal command suggestions via Ollama')
-  .version(packageJson.version)
+  .version(packageJson.version);
+
+// Setup command
+program
+  .command('setup')
+  .description('Configure termwhat settings')
+  .action(async () => {
+    await runSetup(false);
+    process.exit(0);
+  });
+
+// Main command
+program
   .argument('[question...]', 'Question to ask (if omitted, enters REPL mode)')
   .option('-H, --host <url>', 'Ollama host URL')
-  .option('-m, --model <name>', 'Model to use', 'llama3.2')
+  .option('-m, --model <name>', 'Model to use')
   .option('-j, --json', 'Output raw JSON')
   .option('-c, --copy', 'Copy primary command to clipboard')
   .option('--doctor', 'Run connectivity diagnostics')
   .action(async (questionParts: string[], options) => {
+    // Check for first-time setup
+    if (!configExists()) {
+      console.log('👋 Welcome to termwhat!\n');
+      console.log('Looks like this is your first time running termwhat.');
+      console.log('Let\'s set up your Ollama connection.\n');
+      await runSetup(false);
+      console.log('Setup complete! You can now use termwhat.\n');
+    }
+
+    // Load config
+    const config = loadConfig();
+
+    // CLI options override config
     const client = new OllamaClient({
-      host: options.host,
-      model: options.model,
+      host: options.host || config.ollamaHost,
+      model: options.model || config.model,
+      timeout: config.timeout,
     });
 
     // Run doctor mode
