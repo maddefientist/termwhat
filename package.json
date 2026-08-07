@@ -14,9 +14,7 @@
   "author": "maddefientist",
   "files": [
     "dist",
-    "!dist/**/*.test.js",
-    "!dist/**/*.test.d.ts",
-    "!dist/**/*.test.js.map"
+    "!dist/**/*.test.*"
   ],
   "bin": {
     "termwhat": "./dist/index.js"
