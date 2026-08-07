@@ -1,9 +1,23 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+  copyFileSync,
+} from 'fs';
 import { homedir } from 'os';
 import { join, dirname } from 'path';
 import * as readline from 'readline';
 import type { TermwhatConfig, ProviderConfig, OllamaProviderConfig } from './types.js';
-import { AIProviderFactory } from './providers/index.js';
+import {
+  DEFAULT_OLLAMA_LOCAL_MODEL,
+  DEFAULT_OLLAMA_CLOUD_MODEL,
+  OLLAMA_CLOUD_HOST,
+  OPENAI_FALLBACK_MODEL,
+  ANTHROPIC_FALLBACK_MODEL,
+  OPENROUTER_FALLBACK_MODEL,
+} from './providers/index.js';
 
 // Legacy config format (for migration)
 interface LegacyConfig {
@@ -13,6 +27,11 @@ interface LegacyConfig {
 }
 
 const CONFIG_PATH = join(homedir(), '.termwhatrc');
+const CONFIG_BAK_PATH = join(homedir(), '.termwhatrc.bak');
+
+const DEFAULT_TIMEOUT = 60000;
+const MIN_TIMEOUT = 1000;
+const MAX_TIMEOUT = 600000;
 
 function isLegacyConfig(config: any): config is LegacyConfig {
   return (
@@ -23,15 +42,33 @@ function isLegacyConfig(config: any): config is LegacyConfig {
   );
 }
 
-function migrateLegacyConfig(legacy: LegacyConfig): TermwhatConfig {
+function defaultOllamaHost(): string {
   const isDocker = process.env.DOCKER === 'true' || process.env.NODE_ENV === 'production';
-  const defaultHost = isDocker ? 'http://ollama:11434' : 'http://localhost:11434';
+  return isDocker ? 'http://ollama:11434' : 'http://localhost:11434';
+}
 
+function buildDefaultConfig(): TermwhatConfig {
+  return {
+    currentProvider: 'ollama',
+    providers: {
+      ollama: {
+        provider: 'ollama',
+        host: defaultOllamaHost(),
+        model: DEFAULT_OLLAMA_LOCAL_MODEL,
+        timeout: DEFAULT_TIMEOUT,
+        cloud: false,
+      },
+    },
+  };
+}
+
+function migrateLegacyConfig(legacy: LegacyConfig): TermwhatConfig {
   const ollamaConfig: OllamaProviderConfig = {
     provider: 'ollama',
-    host: legacy.ollamaHost || defaultHost,
-    model: legacy.model || 'llama3.2',
-    timeout: legacy.timeout || 60000,
+    host: legacy.ollamaHost || defaultOllamaHost(),
+    model: legacy.model || DEFAULT_OLLAMA_LOCAL_MODEL,
+    timeout: legacy.timeout || DEFAULT_TIMEOUT,
+    cloud: false,
   };
 
   return {
@@ -42,30 +79,77 @@ function migrateLegacyConfig(legacy: LegacyConfig): TermwhatConfig {
   };
 }
 
+/** Normalize / migrate a loaded multi-provider config without discarding user choices. */
+function migrateModernConfig(parsed: any): TermwhatConfig {
+  const config: TermwhatConfig = {
+    currentProvider: parsed.currentProvider || 'ollama',
+    providers: { ...(parsed.providers || {}) },
+  };
+
+  // Ensure each provider entry has required shape; keep host/model/timeout intact
+  for (const [name, raw] of Object.entries(config.providers)) {
+    const p = raw as any;
+    if (!p || typeof p !== 'object') continue;
+
+    if (p.provider === 'ollama' || name === 'ollama' || name === 'ollama-cloud') {
+      const isCloud =
+        p.cloud === true ||
+        name === 'ollama-cloud' ||
+        (typeof p.host === 'string' && p.host.includes('ollama.com'));
+      config.providers[name] = {
+        provider: 'ollama',
+        host: p.host || (isCloud ? OLLAMA_CLOUD_HOST : defaultOllamaHost()),
+        model: p.model || (isCloud ? DEFAULT_OLLAMA_CLOUD_MODEL : DEFAULT_OLLAMA_LOCAL_MODEL),
+        timeout: typeof p.timeout === 'number' ? p.timeout : DEFAULT_TIMEOUT,
+        cloud: isCloud,
+      } satisfies OllamaProviderConfig;
+    } else if (p.provider === 'openai' || name === 'openai') {
+      config.providers[name] = {
+        provider: 'openai',
+        model: p.model || OPENAI_FALLBACK_MODEL,
+        timeout: typeof p.timeout === 'number' ? p.timeout : DEFAULT_TIMEOUT,
+        baseUrl: p.baseUrl,
+        organization: p.organization,
+      };
+    } else if (p.provider === 'anthropic' || name === 'anthropic') {
+      config.providers[name] = {
+        provider: 'anthropic',
+        model: p.model || ANTHROPIC_FALLBACK_MODEL,
+        timeout: typeof p.timeout === 'number' ? p.timeout : DEFAULT_TIMEOUT,
+      };
+    } else if (p.provider === 'openrouter' || name === 'openrouter') {
+      config.providers[name] = {
+        provider: 'openrouter',
+        model: p.model || OPENROUTER_FALLBACK_MODEL,
+        timeout: typeof p.timeout === 'number' ? p.timeout : DEFAULT_TIMEOUT,
+        siteUrl: p.siteUrl,
+        appName: p.appName,
+      };
+    }
+  }
+
+  // If currentProvider points at nothing, fall back carefully
+  if (!config.providers[config.currentProvider]) {
+    const keys = Object.keys(config.providers);
+    config.currentProvider = keys.includes('ollama') ? 'ollama' : keys[0] || 'ollama';
+    if (!config.providers[config.currentProvider]) {
+      config.providers.ollama = buildDefaultConfig().providers.ollama;
+      config.currentProvider = 'ollama';
+    }
+  }
+
+  return config;
+}
+
 export function loadConfig(): TermwhatConfig {
   if (!existsSync(CONFIG_PATH)) {
-    // Return default Ollama config
-    const isDocker = process.env.DOCKER === 'true' || process.env.NODE_ENV === 'production';
-    const defaultHost = isDocker ? 'http://ollama:11434' : 'http://localhost:11434';
-
-    return {
-      currentProvider: 'ollama',
-      providers: {
-        ollama: {
-          provider: 'ollama',
-          host: defaultHost,
-          model: 'llama3.2',
-          timeout: 60000,
-        },
-      },
-    };
+    return buildDefaultConfig();
   }
 
   try {
     const content = readFileSync(CONFIG_PATH, 'utf-8');
     const parsed = JSON.parse(content);
 
-    // Check if migration is needed
     if (isLegacyConfig(parsed)) {
       console.log('📦 Migrating configuration to multi-provider format...');
       const migrated = migrateLegacyConfig(parsed);
@@ -74,24 +158,21 @@ export function loadConfig(): TermwhatConfig {
       return migrated;
     }
 
-    return parsed as TermwhatConfig;
+    return migrateModernConfig(parsed);
   } catch (error) {
-    console.warn(`Warning: Failed to load config from ${CONFIG_PATH}`);
-    // Return default config
-    const isDocker = process.env.DOCKER === 'true' || process.env.NODE_ENV === 'production';
-    const defaultHost = isDocker ? 'http://ollama:11434' : 'http://localhost:11434';
-
-    return {
-      currentProvider: 'ollama',
-      providers: {
-        ollama: {
-          provider: 'ollama',
-          host: defaultHost,
-          model: 'llama3.2',
-          timeout: 60000,
-        },
-      },
-    };
+    // Corrupt file: back up and warn — do not silently overwrite without a trail
+    try {
+      if (existsSync(CONFIG_PATH)) {
+        copyFileSync(CONFIG_PATH, CONFIG_BAK_PATH);
+        console.warn(
+          `Warning: Failed to load config from ${CONFIG_PATH}. ` +
+            `Corrupt file backed up to ${CONFIG_BAK_PATH}. Using defaults.`
+        );
+      }
+    } catch {
+      console.warn(`Warning: Failed to load config from ${CONFIG_PATH}. Using defaults.`);
+    }
+    return buildDefaultConfig();
   }
 }
 
@@ -121,7 +202,7 @@ function detectShell(): string {
   if (shell.includes('zsh')) return 'zsh';
   if (shell.includes('bash')) return 'bash';
   if (shell.includes('fish')) return 'fish';
-  return 'bash'; // default
+  return 'bash';
 }
 
 function getShellRcPath(): string {
@@ -139,6 +220,94 @@ function getShellRcPath(): string {
   }
 }
 
+/** Format an env export line for the user's shell. */
+export function formatEnvExport(envVarName: string, value: string, shell?: string): string {
+  const s = shell || detectShell();
+  if (s === 'fish') {
+    // fish uses set -gx, not export
+    return `set -gx ${envVarName} ${JSON.stringify(value)}`;
+  }
+  return `export ${envVarName}=${JSON.stringify(value)}`;
+}
+
+/**
+ * Read a secret with muted (no-echo) input.
+ * Uses readline's muted-input pattern: monkey-patch the output stream so
+ * keystrokes are not echoed, while still accepting the line on Enter.
+ */
+function questionSecret(rl: readline.Interface, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    const output = (rl as unknown as { output?: NodeJS.WritableStream }).output;
+    const originalWrite = output?.write?.bind(output);
+
+    if (output && originalWrite) {
+      (output as any).write = (chunk: any, ...args: any[]) => {
+        // Suppress echo of single printable characters (user keystrokes).
+        // Keep multi-char writes (prompt text, ANSI, newlines) intact.
+        const s = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk ?? '');
+        if (s.length === 1 && s >= ' ' && s !== '\x7f') {
+          return true;
+        }
+        return (originalWrite as (...a: any[]) => any)(chunk, ...args);
+      };
+    }
+
+    rl.question(prompt, (answer) => {
+      if (output && originalWrite) {
+        (output as any).write = originalWrite;
+      }
+      // Ensure the cursor advances after hidden input
+      if (output) output.write('\n');
+      resolve(answer.trim());
+    });
+  });
+}
+
+function questionPlain(rl: readline.Interface, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => resolve(answer.trim()));
+  });
+}
+
+/** Upsert an env export in a shell rc file — replace existing, don't duplicate. */
+function upsertShellExport(rcPath: string, envVarName: string, value: string): void {
+  const shell = detectShell();
+  const newLine = formatEnvExport(envVarName, value, shell);
+  const marker = `# termwhat - ${envVarName}`;
+
+  let content = '';
+  if (existsSync(rcPath)) {
+    content = readFileSync(rcPath, 'utf-8');
+  } else {
+    const dir = dirname(rcPath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+  }
+
+  // Match prior termwhat-managed block or bare export/set for this var
+  const blockRe = new RegExp(
+    `(?:^|\\n)# termwhat - ${envVarName}[^\\n]*\\n(?:export\\s+${envVarName}=[^\\n]*|set\\s+-gx\\s+${envVarName}\\s+[^\\n]*)\\n?`,
+    'm'
+  );
+  const bareRe =
+    shell === 'fish'
+      ? new RegExp(`(?:^|\\n)set\\s+-gx\\s+${envVarName}\\s+[^\\n]*\\n?`, 'm')
+      : new RegExp(`(?:^|\\n)export\\s+${envVarName}=[^\\n]*\\n?`, 'm');
+
+  const replacement = `\n${marker}\n${newLine}\n`;
+
+  if (blockRe.test(content)) {
+    content = content.replace(blockRe, replacement);
+    writeFileSync(rcPath, content, 'utf-8');
+  } else if (bareRe.test(content)) {
+    content = content.replace(bareRe, replacement);
+    writeFileSync(rcPath, content, 'utf-8');
+  } else {
+    appendFileSync(rcPath, replacement, 'utf-8');
+  }
+}
+
 async function setupProviderApiKey(
   rl: readline.Interface,
   providerType: string,
@@ -146,56 +315,93 @@ async function setupProviderApiKey(
   apiUrl: string,
   envVarName: string
 ): Promise<boolean> {
-  const question = (prompt: string): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question(prompt, (answer) => resolve(answer.trim()));
-    });
-  };
-
   console.log(`\n─────────────────────────────────────`);
   console.log(`Configuring: ${providerType}`);
   console.log(`─────────────────────────────────────\n`);
 
   console.log(`${providerName} requires an API key from: ${apiUrl}\n`);
-  console.log(`I can help you set this up. Your API key will be stored securely`);
-  console.log(`as an environment variable (not in the config file).\n`);
+  console.log(`Your API key will be stored as an environment variable (not in the config file).\n`);
 
   const shellRc = getShellRcPath();
-  console.log(`Add this line to your ${shellRc}:`);
-  console.log(`  export ${envVarName}="your-api-key-here"\n`);
+  const shell = detectShell();
+  const exampleLine = formatEnvExport(envVarName, 'your-api-key-here', shell);
 
-  const shouldAdd = await question(`Would you like me to add this for you? (you'll paste your API key) [y/n]: `);
+  console.log(`Example line for your shell (${shell}):`);
+  console.log(`  ${exampleLine}\n`);
 
-  if (shouldAdd.toLowerCase() !== 'y') {
-    console.log(`\nSkipping ${providerType} setup. You can set it up later by running:`);
-    console.log(`  export ${envVarName}="your-api-key-here"`);
+  const shouldAdd = await questionPlain(
+    rl,
+    `Add to ${shellRc}? [y]es / [n]o (print only) / [s]kip entirely: `
+  );
+
+  const choice = shouldAdd.toLowerCase();
+
+  if (choice === 's' || choice === 'skip') {
+    console.log(`\nSkipping ${providerType} setup.`);
     return false;
   }
 
-  const apiKey = await question(`\nPaste your ${providerName} API key: `);
+  if (choice === 'n' || choice === 'no') {
+    // Don't touch shell config — user will export themselves
+    const apiKey = await questionSecret(rl, `\nPaste your ${providerName} API key (input hidden): `);
+    if (!apiKey) {
+      console.log(`No API key provided. Skipping ${providerType} setup.`);
+      return false;
+    }
+    process.env[envVarName] = apiKey;
+    console.log(`✓ Loaded into current session only`);
+    console.log(`\nAdd this to your shell config yourself:`);
+    console.log(`  ${formatEnvExport(envVarName, apiKey, shell)}`);
+    console.log(`(key not written to disk by termwhat)\n`);
+    // Note: we intentionally show the export line here because the user
+    // opted into manual setup and needs the exact line — but we do not
+    // re-print the bare key on write-failure paths.
+    return true;
+  }
+
+  // Default: yes — write to rc
+  const apiKey = await questionSecret(rl, `\nPaste your ${providerName} API key (input hidden): `);
 
   if (!apiKey) {
     console.log(`No API key provided. Skipping ${providerType} setup.`);
     return false;
   }
 
-  // Append to shell rc file
   try {
-    const exportLine = `\n# termwhat - ${providerName} API key\nexport ${envVarName}="${apiKey}"\n`;
-    appendFileSync(shellRc, exportLine, 'utf-8');
-    console.log(`✓ Added to ${shellRc}`);
-
-    // Set in current environment
+    upsertShellExport(shellRc, envVarName, apiKey);
+    console.log(`✓ Added/updated in ${shellRc}`);
     process.env[envVarName] = apiKey;
     console.log(`✓ Loaded into current session`);
-
     return true;
-  } catch (error) {
+  } catch {
     console.error(`Error: Failed to write to ${shellRc}`);
     console.log(`\nPlease manually add this line to your ${shellRc}:`);
-    console.log(`  export ${envVarName}="${apiKey}"`);
+    // Never print key material on failure — print a placeholder
+    console.log(`  ${formatEnvExport(envVarName, 'YOUR_KEY_HERE', shell)}`);
     return false;
   }
+}
+
+/** Parse and bound a timeout string; report invalid input. Rejects 0/NaN/garbage. */
+export function parseTimeout(input: string | undefined, fallback: number = DEFAULT_TIMEOUT): number {
+  if (input === undefined || input === '') return fallback;
+  const trimmed = String(input).trim();
+  if (!/^\d+$/.test(trimmed)) {
+    console.warn(`Invalid timeout "${input}"; using ${fallback}ms`);
+    return fallback;
+  }
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(n)) {
+    console.warn(`Invalid timeout "${input}"; using ${fallback}ms`);
+    return fallback;
+  }
+  if (n < MIN_TIMEOUT || n > MAX_TIMEOUT) {
+    console.warn(
+      `Timeout ${n} out of range [${MIN_TIMEOUT}, ${MAX_TIMEOUT}]; using ${fallback}ms`
+    );
+    return fallback;
+  }
+  return n;
 }
 
 export async function runSetup(skipIfExists: boolean = false): Promise<TermwhatConfig> {
@@ -210,45 +416,83 @@ export async function runSetup(skipIfExists: boolean = false): Promise<TermwhatC
     output: process.stdout,
   });
 
-  const question = (prompt: string): Promise<string> => {
-    return new Promise((resolve) => {
-      rl.question(prompt, (answer) => resolve(answer.trim()));
-    });
-  };
+  const question = (prompt: string): Promise<string> => questionPlain(rl, prompt);
 
   try {
     const config: TermwhatConfig = loadConfig();
 
-    // Ask which providers to configure
-    console.log('Select providers to configure:');
-    const configOllama = await question('  Configure ollama? [Y/n]: ');
+    console.log('Select providers to configure (Ollama-first):\n');
+    const configOllamaLocal = await question('  Configure Ollama (local)? [Y/n]: ');
+    const configOllamaCloud = await question('  Configure Ollama (cloud)? [y/N]: ');
     const configOpenAI = await question('  Configure openai? [y/N]: ');
     const configAnthropic = await question('  Configure anthropic? [y/N]: ');
     const configOpenRouter = await question('  Configure openrouter? [y/N]: ');
 
-    // Configure Ollama
-    if (configOllama.toLowerCase() !== 'n') {
+    // Configure Ollama (local)
+    if (configOllamaLocal.toLowerCase() !== 'n') {
       console.log(`\n─────────────────────────────────────`);
-      console.log(`Configuring: ollama`);
+      console.log(`Configuring: Ollama (local)`);
       console.log(`─────────────────────────────────────\n`);
 
       const existingOllama = config.providers.ollama as OllamaProviderConfig | undefined;
-      const defaultHost = existingOllama?.host || 'http://localhost:11434';
-      const defaultModel = existingOllama?.model || 'llama3.2';
-      const defaultTimeout = existingOllama?.timeout || 60000;
+      const defaultHost =
+        existingOllama && !existingOllama.cloud
+          ? existingOllama.host
+          : 'http://localhost:11434';
+      const defaultModel =
+        existingOllama && !existingOllama.cloud
+          ? existingOllama.model
+          : DEFAULT_OLLAMA_LOCAL_MODEL;
+      const defaultTimeout = existingOllama?.timeout || DEFAULT_TIMEOUT;
 
       const hostAnswer = await question(`Ollama host URL [${defaultHost}]: `);
       const modelAnswer = await question(`Default model [${defaultModel}]: `);
       const timeoutAnswer = await question(`Request timeout in ms [${defaultTimeout}]: `);
 
+      const host = hostAnswer || defaultHost;
+      // Validate host is a URL
+      try {
+        new URL(host);
+      } catch {
+        console.warn(`Warning: "${host}" does not look like a valid URL; saving anyway.`);
+      }
+
       config.providers.ollama = {
         provider: 'ollama',
-        host: hostAnswer || defaultHost,
+        host,
         model: modelAnswer || defaultModel,
-        timeout: parseInt(timeoutAnswer) || defaultTimeout,
+        timeout: parseTimeout(timeoutAnswer, defaultTimeout),
+        cloud: false,
       };
 
-      console.log(`✓ Ollama configured`);
+      console.log(`✓ Ollama (local) configured`);
+    }
+
+    // Configure Ollama (cloud)
+    if (configOllamaCloud.toLowerCase() === 'y') {
+      const configured = await setupProviderApiKey(
+        rl,
+        'ollama-cloud',
+        'Ollama Cloud',
+        'https://ollama.com/settings/keys',
+        'TERMWHAT_OLLAMA_API_KEY'
+      );
+
+      if (configured) {
+        const existing = config.providers['ollama-cloud'] as OllamaProviderConfig | undefined;
+        const defaultModel = existing?.model || DEFAULT_OLLAMA_CLOUD_MODEL;
+        const modelAnswer = await question(`\nDefault cloud model [${defaultModel}]: `);
+
+        config.providers['ollama-cloud'] = {
+          provider: 'ollama',
+          host: OLLAMA_CLOUD_HOST,
+          model: modelAnswer || defaultModel,
+          timeout: DEFAULT_TIMEOUT,
+          cloud: true,
+        };
+
+        console.log(`✓ Ollama (cloud) configured`);
+      }
     }
 
     // Configure OpenAI
@@ -262,13 +506,26 @@ export async function runSetup(skipIfExists: boolean = false): Promise<TermwhatC
       );
 
       if (configured) {
-        const defaultModel = 'gpt-4';
+        let defaultModel = OPENAI_FALLBACK_MODEL;
+        try {
+          // Live discovery when possible
+          const { OpenAIProvider } = await import('./providers/openai.js');
+          const tmp = new OpenAIProvider({
+            provider: 'openai',
+            model: OPENAI_FALLBACK_MODEL,
+            timeout: DEFAULT_TIMEOUT,
+          });
+          defaultModel = await tmp.resolveDefaultModel();
+        } catch {
+          // keep fallback
+        }
+
         const modelAnswer = await question(`\nDefault model [${defaultModel}]: `);
 
         config.providers.openai = {
           provider: 'openai',
           model: modelAnswer || defaultModel,
-          timeout: 60000,
+          timeout: DEFAULT_TIMEOUT,
         };
 
         console.log(`✓ OpenAI configured`);
@@ -286,13 +543,25 @@ export async function runSetup(skipIfExists: boolean = false): Promise<TermwhatC
       );
 
       if (configured) {
-        const defaultModel = 'claude-3-5-sonnet-20241022';
+        let defaultModel = ANTHROPIC_FALLBACK_MODEL;
+        try {
+          const { AnthropicProvider } = await import('./providers/anthropic.js');
+          const tmp = new AnthropicProvider({
+            provider: 'anthropic',
+            model: ANTHROPIC_FALLBACK_MODEL,
+            timeout: DEFAULT_TIMEOUT,
+          });
+          defaultModel = await tmp.resolveDefaultModel();
+        } catch {
+          // keep fallback
+        }
+
         const modelAnswer = await question(`\nDefault model [${defaultModel}]: `);
 
         config.providers.anthropic = {
           provider: 'anthropic',
           model: modelAnswer || defaultModel,
-          timeout: 60000,
+          timeout: DEFAULT_TIMEOUT,
         };
 
         console.log(`✓ Anthropic configured`);
@@ -310,13 +579,25 @@ export async function runSetup(skipIfExists: boolean = false): Promise<TermwhatC
       );
 
       if (configured) {
-        const defaultModel = 'anthropic/claude-3.5-sonnet';
+        let defaultModel = OPENROUTER_FALLBACK_MODEL;
+        try {
+          const { OpenRouterProvider } = await import('./providers/openrouter.js');
+          const tmp = new OpenRouterProvider({
+            provider: 'openrouter',
+            model: OPENROUTER_FALLBACK_MODEL,
+            timeout: DEFAULT_TIMEOUT,
+          });
+          defaultModel = await tmp.resolveDefaultModel();
+        } catch {
+          // keep fallback
+        }
+
         const modelAnswer = await question(`\nDefault model [${defaultModel}]: `);
 
         config.providers.openrouter = {
           provider: 'openrouter',
           model: modelAnswer || defaultModel,
-          timeout: 60000,
+          timeout: DEFAULT_TIMEOUT,
         };
 
         console.log(`✓ OpenRouter configured`);
@@ -361,18 +642,16 @@ export function getProviderConfig(config: TermwhatConfig, providerName?: string)
     throw new Error(`Provider "${provider}" not found in configuration`);
   }
 
-  // Apply environment variable overrides based on provider type
   if (providerConfig.provider === 'ollama') {
     return {
       ...providerConfig,
       host: process.env.TERMWHAT_OLLAMA_HOST || providerConfig.host,
       model: process.env.TERMWHAT_MODEL || providerConfig.model,
     };
-  } else {
-    // For OpenAI, Anthropic, OpenRouter
-    return {
-      ...providerConfig,
-      model: process.env.TERMWHAT_MODEL || providerConfig.model,
-    };
   }
+
+  return {
+    ...providerConfig,
+    model: process.env.TERMWHAT_MODEL || providerConfig.model,
+  };
 }

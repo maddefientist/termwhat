@@ -47,7 +47,6 @@ export async function startRepl(initialProvider: AIProvider, config: TermwhatCon
       return;
     }
 
-    // Handle REPL commands
     if (input.startsWith('/')) {
       await handleCommand(input, state, conversationHistory, rl);
       rl.setPrompt(getPrompt(state.provider));
@@ -55,7 +54,6 @@ export async function startRepl(initialProvider: AIProvider, config: TermwhatCon
       return;
     }
 
-    // Regular question - query provider
     await handleQuestion(input, state.provider, conversationHistory, false);
     rl.prompt();
   });
@@ -65,7 +63,6 @@ export async function startRepl(initialProvider: AIProvider, config: TermwhatCon
     process.exit(0);
   });
 
-  // Handle Ctrl+C gracefully
   rl.on('SIGINT', () => {
     console.log('\n(Use /exit or press Ctrl+C again to quit)');
     rl.prompt();
@@ -76,6 +73,15 @@ function getPrompt(provider: AIProvider): string {
   const providerType = provider.getProviderType();
   const model = provider.getModelName();
   return `[${providerType}:${model}]> `;
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 async function handleCommand(
@@ -99,7 +105,6 @@ async function handleCommand(
       break;
 
     case 'term':
-      // Brief mode - just output the command
       if (args.length === 0) {
         console.log('Usage: /term <question>');
         console.log('Example: /term how to list running processes');
@@ -113,14 +118,14 @@ async function handleCommand(
       if (args.length === 0) {
         console.log(`Current provider: ${state.currentProviderName}`);
         console.log('\nAvailable providers:');
-        Object.keys(state.config.providers).forEach(name => {
+        Object.keys(state.config.providers).forEach((name) => {
           const p = state.config.providers[name];
           const marker = name === state.currentProviderName ? ' (current)' : '';
           console.log(`  • ${name} (${p.provider}, model: ${p.model})${marker}`);
         });
       } else if (args[0] === 'list') {
         console.log('Available providers:');
-        Object.keys(state.config.providers).forEach(name => {
+        Object.keys(state.config.providers).forEach((name) => {
           const p = state.config.providers[name];
           const marker = name === state.currentProviderName ? ' (current)' : '';
           console.log(`  • ${name} (${p.provider}, model: ${p.model})${marker}`);
@@ -140,7 +145,9 @@ async function handleCommand(
           state.currentProviderName = newProviderName;
           state.config.currentProvider = newProviderName;
           saveConfig(state.config);
-          console.log(`Provider set to: ${newProviderName} (${newProviderConfig.provider}, model: ${newProviderConfig.model})`);
+          console.log(
+            `Provider set to: ${newProviderName} (${newProviderConfig.provider}, model: ${newProviderConfig.model})`
+          );
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Unknown error';
           console.error(`Error switching provider: ${message}`);
@@ -152,8 +159,12 @@ async function handleCommand(
       try {
         console.log('Fetching available models...');
         const models = await state.provider.listModels();
+        if (models.length === 0) {
+          console.log('\nNo models returned (offline, unauthorized, or empty catalog).\n');
+          break;
+        }
         console.log('\nAvailable models:');
-        models.forEach(model => {
+        models.forEach((model) => {
           const marker = model === state.provider.getModelName() ? ' (current)' : '';
           console.log(`  • ${model}${marker}`);
         });
@@ -169,9 +180,21 @@ async function handleCommand(
         console.log(`Current model: ${state.provider.getModelName()}`);
       } else {
         const newModel = args[0];
+
+        // Warn if not in the live list (do not block — catalogs can lag)
+        try {
+          const live = await state.provider.listModels();
+          if (live.length > 0 && !live.includes(newModel)) {
+            console.log(
+              `⚠ Warning: "${newModel}" was not found in the provider's live model list.`
+            );
+          }
+        } catch {
+          // ignore list failures during validation
+        }
+
         state.provider.updateConfig({ model: newModel });
 
-        // Update config file
         const providerConfig = state.config.providers[state.currentProviderName];
         if (providerConfig) {
           providerConfig.model = newModel;
@@ -182,8 +205,9 @@ async function handleCommand(
       }
       break;
 
-    case 'host':
-      if (state.provider.getProviderType() !== 'ollama') {
+    case 'host': {
+      const pType = state.provider.getProviderType();
+      if (pType !== 'ollama' && pType !== 'ollama-cloud') {
         console.log('The /host command is only available for the Ollama provider.');
         break;
       }
@@ -193,9 +217,15 @@ async function handleCommand(
         console.log(`Current host: ${config.host}`);
       } else {
         const newHost = args[0];
+        if (!isValidHttpUrl(newHost)) {
+          console.log(
+            `Error: "${newHost}" is not a valid http(s) URL. Example: http://localhost:11434`
+          );
+          break;
+        }
+
         state.provider.updateConfig({ host: newHost });
 
-        // Update config file
         const providerConfig = state.config.providers[state.currentProviderName];
         if (providerConfig && providerConfig.provider === 'ollama') {
           providerConfig.host = newHost;
@@ -205,13 +235,13 @@ async function handleCommand(
         console.log(`Host set to: ${newHost}`);
       }
       break;
+    }
 
     case 'history':
       showHistory(history);
       break;
 
     case 'clear':
-      // Keep only the system prompt
       history.length = 1;
       console.log('Conversation history cleared.');
       break;
@@ -232,31 +262,21 @@ async function handleQuestion(
   history: ConversationMessage[],
   brief: boolean = false
 ): Promise<void> {
-  // Add user message to history
   history.push({ role: 'user', content: question });
 
-  // Trim history to keep only last MAX_HISTORY turns (excluding system prompt)
   while (history.length > MAX_HISTORY * 2 + 1) {
-    history.splice(1, 2); // Remove oldest user+assistant pair
+    history.splice(1, 2);
   }
 
   const stopSpinner = renderSpinner('Thinking...');
   let rawResponse = '';
 
   try {
-    rawResponse = await provider.chat(history, {
-      onChunk: (chunk) => {
-        // We collect chunks but don't display them in streaming mode
-        // to avoid JSON parsing issues mid-stream
-      }
-    });
-
+    rawResponse = await provider.chat(history);
     stopSpinner();
 
-    // Add assistant response to history
     history.push({ role: 'assistant', content: rawResponse });
 
-    // Render the response (brief or full)
     const output = renderResponse(rawResponse, brief);
     console.log(output);
   } catch (error) {

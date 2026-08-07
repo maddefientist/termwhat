@@ -5,11 +5,12 @@ export interface HealthCheckResult {
   models?: string[];
   error?: string;
   responseTime?: number;
+  /** HTTP status when the failure came from an API response (e.g. 401) */
+  status?: number;
 }
 
 export interface ChatOptions {
-  stream?: boolean;
-  onChunk?: (chunk: string) => void;
+  // intentionally empty — streaming removed in 3.0 (was unused by REPL)
 }
 
 export interface AIProvider {
@@ -20,6 +21,17 @@ export interface AIProvider {
   updateConfig(updates: Record<string, any>): void;
   getProviderType(): string;
   getModelName(): string;
+}
+
+/** Error that preserves HTTP status for --doctor and callers */
+export class ProviderError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ProviderError';
+    this.status = status;
+  }
 }
 
 export abstract class BaseAIProvider implements AIProvider {
@@ -62,4 +74,18 @@ export abstract class BaseAIProvider implements AIProvider {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     return { controller, timeoutId };
   }
+}
+
+/** Pick a preferred model from a live list; fall back to a conservative constant. */
+export function pickDefaultModel(
+  models: string[],
+  prefer: RegExp[],
+  fallback: string
+): string {
+  if (!models.length) return fallback;
+  for (const re of prefer) {
+    const match = models.find((m) => re.test(m));
+    if (match) return match;
+  }
+  return models[0] || fallback;
 }
