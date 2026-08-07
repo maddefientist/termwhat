@@ -92,7 +92,7 @@ function formatResponse(response: TermwhatResponse): string {
     lines.push('');
     lines.push(`${colors.yellow}⚠️  Pitfalls:${colors.reset}`);
     response.pitfalls.forEach((pitfall) => {
-      lines.push(`  ${colors.yellow}• ${pitfall}${colors.reset}`);
+      lines.push(`  ${colors.yellow}• ${toBulletText(pitfall)}${colors.reset}`);
     });
   }
 
@@ -100,12 +100,35 @@ function formatResponse(response: TermwhatResponse): string {
     lines.push('');
     lines.push(`${colors.dim}Verification:${colors.reset}`);
     response.verification_steps.forEach((step) => {
-      lines.push(`  ${colors.dim}• ${step}${colors.reset}`);
+      lines.push(`  ${colors.dim}• ${toBulletText(step)}${colors.reset}`);
     });
   }
 
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Models often return richer shapes than the prompt asks for — a bare string is
+ * the contract, but `{command, description}` objects are common. Render those
+ * readably instead of letting them stringify to "[object Object]".
+ */
+function toBulletText(entry: unknown): string {
+  if (typeof entry === 'string') return entry;
+  if (entry === null || entry === undefined) return '';
+  if (typeof entry !== 'object') return String(entry);
+
+  const obj = entry as Record<string, unknown>;
+  const primary = obj.command ?? obj.step ?? obj.text ?? obj.title;
+  const detail = obj.description ?? obj.explanation ?? obj.details;
+
+  if (typeof primary === 'string' && typeof detail === 'string') {
+    return `${primary} — ${detail}`;
+  }
+  if (typeof primary === 'string') return primary;
+  if (typeof detail === 'string') return detail;
+
+  return JSON.stringify(entry);
 }
 
 function formatCommand(cmd: CommandSuggestion, number: number): string[] {

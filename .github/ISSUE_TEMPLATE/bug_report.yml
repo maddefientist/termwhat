@@ -50,7 +50,7 @@ body:
     id: provider-model
     attributes:
       label: Provider + model
-      description: e.g. "ollama / llama3.1" or "openai / gpt-4o-mini"
+      description: e.g. "ollama (local) / qwen3.5:4b" or "ollama (cloud) / gpt-oss:120b"
     validations:
       required: true
 

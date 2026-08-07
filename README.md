@@ -1,324 +1,195 @@
+<div align="center">
+
+```
+ ┌─┐┌─┐┬─┐┌┬┐┬ ┬┬ ┬┌─┐┌┬┐
+ ├┤ ├┤ ├┬┘│││├─┤├─┤├─┤ │
+ ┴  └─┘┴└─┴ ┴┴ ┴┴ ┴┴ ┴ ┴
+```
+
 # termwhat
 
-Stop googling "how to [insert command here]" and just ask your terminal instead.
+**Stop googling "how to [insert command here]" and just ask your terminal instead.**
 
-Uses AI (Ollama, OpenAI, Anthropic, or OpenRouter) to suggest terminal commands in plain English. Choose local privacy with Ollama or cloud power with GPT-4 or Claude.
+[![CI](https://github.com/maddefientist/termwhat/actions/workflows/ci.yml/badge.svg)](https://github.com/maddefientist/termwhat/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/termwhat.svg)](https://www.npmjs.com/package/termwhat)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 
-## Why?
+</div>
 
-Because I got tired of:
-- Searching Stack Overflow for the same commands
-- Forgetting obscure flags for `tar`, `find`, `lsof`, etc.
-- Wondering if that random internet command is safe to run
+Ask in plain English, get back the actual command — with an explanation, a risk badge, and the
+pitfalls nobody mentions until after you've hit enter.
 
-Now I just type `termwhat command to kill process on port 3000` and get safe suggestions with explanations.
+**termwhat never runs anything.** It suggests. You decide. That's the whole contract.
 
-## Quick Install
+```console
+$ termwhat kill whatever is squatting on port 3000
 
-Requires Node.js 20+.
+Kill process using port 3000
 
-**One-line install:**
+Assumptions:
+  • Linux/macOS or Windows with appropriate tools available
+
+Commands:
+
+1. Find process using port 3000 [LOW]
+   lsof -i :3000 || netstat -tlnp | grep :3000 || ss -tlnp | grep :3000
+   Identifies the PID(s) of process(es) currently listening on port 3000.
+
+2. Gracefully kill process [LOW]
+   kill -15 <PID>
+   Sends SIGTERM for graceful shutdown. Wait 5 seconds for process to close cleanly.
+
+3. Force kill if needed [HIGH]
+   kill -9 <PID>
+   Forcibly terminate the process if graceful shutdown fails. Only use after waiting.
+
+⚠️  Pitfalls:
+  • Running kill without confirming the PID first - could kill the wrong process
+  • Using kill -9 without waiting - may cause data loss in long-running services
+
+Verification:
+  • Run 'lsof -i :3000' again to confirm the port is free
+```
+
+<sub>Real output, lightly trimmed for length. Ollama + `qwen3.5:4b`, running locally.</sub>
+
+## Why
+
+Because the alternative is opening a browser, scrolling past three blogspam preambles, and then
+pasting a command you don't fully understand into a root shell. This is faster and shows its work.
+
+## Install
+
+**Requires Node.js 20+.**
+
 ```bash
+npm install -g termwhat
+```
+
+<details>
+<summary>Other ways in</summary>
+
+```bash
+# one-line installer
 curl -fsSL https://raw.githubusercontent.com/maddefientist/termwhat/main/install.sh | bash
-```
 
-**Or with git:**
-```bash
+# from source
 git clone https://github.com/maddefientist/termwhat.git
-cd termwhat
-./install.sh
-```
+cd termwhat && ./install.sh
 
-**Or with Docker:**
-```bash
+# docker (bundles Ollama)
 git clone https://github.com/maddefientist/termwhat.git
-cd termwhat
-docker-compose up -d
+cd termwhat && docker compose up -d
 ```
 
-On first run, you'll be asked to configure your preferred AI provider.
+</details>
+
+First run walks you through picking a provider. No config file to hand-write.
 
 ## Providers
 
-termwhat supports multiple AI providers:
+termwhat is **Ollama-first** — the default path costs nothing, needs no account, and never sends
+your questions anywhere. The cloud providers are there if you want them.
 
-| Provider | Type | Setup Required |
-|----------|------|----------------|
-| **Ollama** | Local | Install [Ollama](https://ollama.ai/) |
-| **OpenAI** | Cloud | API key from [platform.openai.com](https://platform.openai.com/api-keys) |
-| **Anthropic** | Cloud | API key from [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| **OpenRouter** | Cloud | API key from [openrouter.ai](https://openrouter.ai/keys) |
+| Provider | Key needed | Notes |
+| --- | --- | --- |
+| **Ollama (local)** ⭐ | none | Default. Runs on your machine. Ships with `qwen3.5:4b`. |
+| **Ollama (cloud)** | `TERMWHAT_OLLAMA_API_KEY` | Big models, no GPU. Defaults to `gpt-oss:120b`. |
+| OpenAI | `TERMWHAT_OPENAI_API_KEY` | |
+| Anthropic | `TERMWHAT_ANTHROPIC_API_KEY` | |
+| OpenRouter | `TERMWHAT_OPENROUTER_API_KEY` | One key, many models. |
 
-### Provider Setup
+Model lists are fetched live from whichever provider you're on, so new models show up without
+waiting for a termwhat release. Run `/models` in the REPL to see what's available to you.
 
-**Ollama (local, private):**
 ```bash
-# Install Ollama
-curl https://ollama.ai/install.sh | sh
-
-# Pull a model
-ollama pull llama3.2
-
-# Run termwhat setup
-termwhat setup
-```
-
-**OpenAI (cloud):**
-```bash
-export TERMWHAT_OPENAI_API_KEY="sk-..."
-termwhat setup  # select OpenAI
-```
-
-**Anthropic (cloud):**
-```bash
-export TERMWHAT_ANTHROPIC_API_KEY="sk-ant-..."
-termwhat setup  # select Anthropic
-```
-
-**OpenRouter (cloud, multi-model):**
-```bash
-export TERMWHAT_OPENROUTER_API_KEY="sk-or-..."
-termwhat setup  # select OpenRouter
+# fastest possible start, assuming ollama is already running
+ollama pull qwen3.5:4b
+termwhat "recursively find files over 100MB"
 ```
 
 ## Usage
 
-**One-shot queries** (just ask):
 ```bash
-termwhat command to kill all processes on port 3000
-termwhat how do I find large files
-termwhat compress this folder
-termwhat --copy check disk usage  # copies command to clipboard
+termwhat <your question>          # one-shot
+termwhat                          # no question drops you into the REPL
+termwhat setup                    # reconfigure
 ```
 
-**Brief mode** (just the command, no explanation):
+| Flag | What it does |
+| --- | --- |
+| `-p, --provider <name>` | `ollama`, `ollama-cloud`, `openai`, `anthropic`, `openrouter` |
+| `-m, --model <name>` | Override the model for this run |
+| `-H, --host <url>` | Point at a different Ollama host |
+| `-b, --brief` | Just the command. No explanation, no TED talk. |
+| `-j, --json` | Raw JSON, for piping |
+| `-c, --copy` | Copy the primary command to your clipboard |
+| `--doctor` | Diagnose connectivity, auth, and model availability |
+
+### REPL
+
+Run `termwhat` with no arguments. Prompt shows `[provider:model]>`.
+
+| Command | |
+| --- | --- |
+| `/help` | Show commands |
+| `/provider [name]` | Show or switch provider (`/provider` alone lists them) |
+| `/models` | List models available from the current provider |
+| `/model <name>` | Switch model |
+| `/host <url>` | Point at a different Ollama host |
+| `/term <question>` | Ask without leaving the REPL |
+| `/history` | Recent turns |
+| `/doctor` | Run diagnostics |
+| `/clear` | Clear the screen |
+| `/exit` | Leave |
+
+### Pro tip
+
 ```bash
-termwhat --brief "how to list running processes"
-# Output: ps aux
-
-termwhat -b "compress this folder"
-# Output: tar -czf folder.tar.gz folder/
+alias what='termwhat'
+what how do I squash the last 3 commits
 ```
-
-**Pro tip:** Create a shell alias for even faster access:
-```bash
-# Add to your ~/.zshrc or ~/.bashrc:
-term() {
-  termwhat --brief "$@"
-}
-
-# Then use it anywhere:
-term list all hidden files
-term check disk usage
-```
-
-**Use a specific provider:**
-```bash
-termwhat --provider openai "how do I configure nginx"
-termwhat --provider anthropic --model claude-3-5-sonnet-20241022 "explain this regex"
-```
-
-**Interactive mode**:
-```bash
-termwhat
-```
-
-This drops you into a REPL where you can have a conversation. Type `/help` for commands, `/exit` to quit.
-
-**REPL commands**:
-- `/term <question>` - brief mode: output only the command
-- `/provider [name]` - switch providers (ollama, openai, anthropic, openrouter)
-- `/provider list` - list available providers
-- `/model [name]` - switch models
-- `/models` - list available models for current provider
-- `/host [url]` - change Ollama host (Ollama only)
-- `/history` - see conversation
-- `/clear` - reset conversation
-- `/doctor` - check if everything's working
 
 ## Configuration
 
-**First run setup:**
+Config lives at `~/.termwhatrc`. Environment variables win over the config file, and CLI flags
+win over both.
 
-On first use, termwhat asks which providers to configure. Settings are saved to `~/.termwhatrc`.
+| Variable | |
+| --- | --- |
+| `TERMWHAT_PROVIDER` | Default provider |
+| `TERMWHAT_MODEL` | Default model |
+| `TERMWHAT_OLLAMA_HOST` | Ollama host (default `http://localhost:11434`) |
+| `TERMWHAT_*_API_KEY` | Per-provider keys — see the provider table above |
 
-**Change settings anytime:**
-```bash
-termwhat setup
-```
+`NO_COLOR` is respected.
 
-**Override per-query:**
-```bash
-termwhat --provider openai --model gpt-4 "your question"
-termwhat --host http://192.168.1.100:11434 "your question"  # for Ollama
-```
+## Safety
 
-**All CLI options:**
-- `-p, --provider <type>` - provider to use (ollama, openai, anthropic, openrouter)
-- `-H, --host <url>` - Ollama host (backward compatible)
-- `-m, --model <name>` - model to use
-- `-b, --brief` - brief mode: output only the command(s)
-- `-j, --json` - raw JSON output
-- `-c, --copy` - copy first command to clipboard
-- `--doctor` - run diagnostics
-
-**Environment variables:**
-- `TERMWHAT_PROVIDER` - default provider
-- `TERMWHAT_MODEL` - default model
-- `TERMWHAT_OLLAMA_HOST` - Ollama host URL
-- `TERMWHAT_OPENAI_API_KEY` - OpenAI API key
-- `TERMWHAT_ANTHROPIC_API_KEY` - Anthropic API key
-- `TERMWHAT_OPENROUTER_API_KEY` - OpenRouter API key
-
-**Config file location:** `~/.termwhatrc`
-
-## Docker
-
-The compose file includes both termwhat and Ollama:
-
-```bash
-docker-compose up -d
-docker exec -it termwhat node dist/index.js
-```
-
-To use an external Ollama instance or cloud providers, edit `.env`:
-```bash
-cp .env.example .env
-# Configure your providers
-docker-compose up -d
-```
-
-## Remote Ollama
-
-If you're running Ollama on another machine:
-
-**On the Ollama machine:**
-```bash
-OLLAMA_HOST=0.0.0.0 ollama serve
-```
-
-**On your machine:**
-```bash
-export TERMWHAT_OLLAMA_HOST=http://192.168.1.100:11434
-termwhat
-```
-
-## Examples
-
-```bash
-$ termwhat how do I find files modified in the last 24 hours
-
-Find Recently Modified Files
-
-Commands:
-
-1. Find files modified in last 24 hours [LOW]
-   find . -type f -mtime -1
-   Searches current directory for files modified within 24 hours
-
-2. With human-readable details [LOW]
-   find . -type f -mtime -1 -ls
-   Shows detailed info including size and permissions
-
-Verification:
-  • Check if file count matches expectations
-```
-
-More examples:
-```bash
-termwhat command to kill all processes on port 3000
-termwhat how do I compress a folder into tar.gz
-termwhat show me all cloudflare tunnel IPs
-termwhat check which process is using most memory
-```
+- **termwhat never executes a suggested command.** Nothing in the codebase shells out with model
+  output. The only process it spawns is your clipboard utility, and only when you pass `--copy`.
+- Every suggestion carries a **LOW / MEDIUM / HIGH** risk badge and a pitfalls section.
+- API keys are read from environment variables. The setup wizard can append an export line to your
+  shell config for you — it masks the key as you type and never echoes it back.
+- Suggestions come from a language model, which means they are sometimes confidently wrong. Read
+  before you run. That is the entire reason the explanations are there.
 
 ## Troubleshooting
 
-**Provider won't connect:**
-```bash
-termwhat --doctor
-```
+Start with `termwhat --doctor`. It checks reachability, authentication, and whether your chosen
+model actually exists on the provider, then tells you what to do about it.
 
-This checks your connection and tells you what's wrong.
+## Contributing
 
-**Model not found (Ollama):**
-```bash
-ollama pull llama3.2
-ollama list  # see installed models
-```
-
-**API key issues (cloud providers):**
-```bash
-# Check if API key is set
-echo $TERMWHAT_OPENAI_API_KEY
-
-# Run setup again
-termwhat setup
-```
-
-**Change configuration:**
-```bash
-termwhat setup
-```
-
-**Clipboard not working (Linux):**
-```bash
-sudo apt-get install xclip
-```
-
-## How it works
-
-1. You ask a question in plain English
-2. termwhat sends it to your configured AI provider
-3. The LLM returns structured JSON with commands, explanations, and risk levels
-4. termwhat formats and displays it nicely
-5. You copy/paste commands manually (it never executes anything)
-
-Commands are tagged as LOW, MEDIUM, or HIGH risk. Destructive stuff like `rm -rf` gets flagged.
-
-## Development
-
-```bash
-npm install          # install dependencies
-npm run dev          # watch mode
-npm run build        # compile TypeScript
-npm test             # run tests
-```
-
-Project structure:
-```
-src/
-├── index.ts       # CLI entry point
-├── providers/     # provider abstraction layer
-│   ├── base.ts       # AIProvider interface
-│   ├── ollama.ts     # Ollama provider
-│   ├── openai.ts     # OpenAI provider
-│   ├── anthropic.ts  # Anthropic provider
-│   ├── openrouter.ts # OpenRouter provider
-│   └── factory.ts    # provider factory
-├── config.ts      # multi-provider config
-├── render.ts      # terminal output formatting
-├── repl.ts        # interactive mode
-├── doctor.ts      # health checks
-└── types.ts       # TypeScript interfaces
-```
-
-## Migration from v1
-
-If you're upgrading from termwhat v1 (Ollama-only), your configuration will be automatically migrated on first run. Your Ollama settings will be preserved.
-
-## Security
-
-- Never executes commands automatically
-- All LLM output is validated and sanitized
-- API keys stored only in environment variables (never in config file)
-- Works offline with Ollama (no external APIs)
-- Only copies to clipboard with explicit `--copy` flag
+Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Adding a provider is roughly
+"implement one interface, register it in the factory." Security reports go through
+[SECURITY.md](SECURITY.md), not the public issue tracker.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-Built because I kept forgetting how to use `lsof` and `netstat`. Now with multi-provider support because sometimes you need Claude's reasoning or GPT-4's knowledge.
+Built because I kept forgetting how to use `lsof` and `netstat`.

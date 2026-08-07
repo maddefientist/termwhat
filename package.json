@@ -1,8 +1,23 @@
 {
   "name": "termwhat",
   "version": "3.0.0",
-  "description": "AI-powered terminal command suggestions with multi-provider support (Ollama, OpenAI, Anthropic, OpenRouter)",
+  "description": "Ask your terminal what command you need. Ollama-first AI command suggestions that never run anything without you.",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maddefientist/termwhat.git"
+  },
+  "homepage": "https://github.com/maddefientist/termwhat#readme",
+  "bugs": {
+    "url": "https://github.com/maddefientist/termwhat/issues"
+  },
+  "author": "maddefientist",
+  "files": [
+    "dist",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.d.ts",
+    "!dist/**/*.test.js.map"
+  ],
   "bin": {
     "termwhat": "./dist/index.js"
   },
@@ -18,7 +33,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
-  "keywords": ["cli","terminal","ollama","openai","anthropic","ai","command-line","llm"],
+  "keywords": ["cli","terminal","ollama","openai","anthropic","openrouter","ai","command-line","llm","shell","developer-tools","productivity"],
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

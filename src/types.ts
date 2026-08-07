@@ -5,12 +5,19 @@ export interface CommandSuggestion {
   risk_level: 'low' | 'medium' | 'high';
 }
 
+/**
+ * The prompt asks for plain strings here, but models frequently return richer
+ * objects (e.g. `{command, description}`). The renderer normalizes both, so the
+ * type reflects what actually arrives rather than what we asked for.
+ */
+export type NoteEntry = string | Record<string, unknown>;
+
 export interface TermwhatResponse {
   title: string;
   os_assumptions: string[];
   commands: CommandSuggestion[];
-  pitfalls: string[];
-  verification_steps: string[];
+  pitfalls: NoteEntry[];
+  verification_steps: NoteEntry[];
 }
 
 export interface ConversationMessage {
