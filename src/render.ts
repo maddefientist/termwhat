@@ -17,13 +17,11 @@ export function renderResponse(jsonString: string, brief: boolean = false): stri
   let response: TermwhatResponse;
 
   try {
-    // Try to parse the JSON response
     response = JSON.parse(jsonString);
   } catch (error) {
     return renderParseError(jsonString, error);
   }
 
-  // Validate response structure
   if (!isValidResponse(response)) {
     return renderParseError(jsonString, new Error('Invalid response structure'));
   }
@@ -32,14 +30,12 @@ export function renderResponse(jsonString: string, brief: boolean = false): stri
 }
 
 function formatBriefResponse(response: TermwhatResponse): string {
-  // Return just the command(s), one per line
   if (response.commands.length === 0) {
     return 'No commands found';
   }
 
-  // Return first command, or first two if there are alternatives
   const commandsToShow = response.commands.slice(0, Math.min(2, response.commands.length));
-  return commandsToShow.map(cmd => cmd.command).join('\n');
+  return commandsToShow.map((cmd) => cmd.command).join('\n');
 }
 
 function isValidResponse(obj: any): obj is TermwhatResponse {
@@ -73,21 +69,18 @@ function renderParseError(rawResponse: string, error: unknown): string {
 function formatResponse(response: TermwhatResponse): string {
   const lines: string[] = [];
 
-  // Title
   lines.push('');
   lines.push(`${colors.bold}${colors.cyan}${response.title}${colors.reset}`);
   lines.push('');
 
-  // OS Assumptions
   if (response.os_assumptions.length > 0) {
     lines.push(`${colors.dim}Assumptions:${colors.reset}`);
-    response.os_assumptions.forEach(assumption => {
+    response.os_assumptions.forEach((assumption) => {
       lines.push(`  ${colors.dim}• ${assumption}${colors.reset}`);
     });
     lines.push('');
   }
 
-  // Commands
   lines.push(`${colors.bold}Commands:${colors.reset}`);
   lines.push('');
 
@@ -95,20 +88,18 @@ function formatResponse(response: TermwhatResponse): string {
     lines.push(...formatCommand(cmd, index + 1));
   });
 
-  // Pitfalls
   if (response.pitfalls.length > 0) {
     lines.push('');
     lines.push(`${colors.yellow}⚠️  Pitfalls:${colors.reset}`);
-    response.pitfalls.forEach(pitfall => {
+    response.pitfalls.forEach((pitfall) => {
       lines.push(`  ${colors.yellow}• ${pitfall}${colors.reset}`);
     });
   }
 
-  // Verification Steps
   if (response.verification_steps.length > 0) {
     lines.push('');
     lines.push(`${colors.dim}Verification:${colors.reset}`);
-    response.verification_steps.forEach(step => {
+    response.verification_steps.forEach((step) => {
       lines.push(`  ${colors.dim}• ${step}${colors.reset}`);
     });
   }
@@ -122,13 +113,10 @@ function formatCommand(cmd: CommandSuggestion, number: number): string[] {
   const riskColor = getRiskColor(cmd.risk_level);
   const riskBadge = getRiskBadge(cmd.risk_level);
 
-  // Command header with number and label
-  lines.push(`${colors.dim}${number}.${colors.reset} ${colors.bold}${cmd.label}${colors.reset} ${riskBadge}`);
-
-  // The actual command
+  lines.push(
+    `${colors.dim}${number}.${colors.reset} ${colors.bold}${cmd.label}${colors.reset} ${riskBadge}`
+  );
   lines.push(`   ${riskColor}${cmd.command}${colors.reset}`);
-
-  // Explanation
   lines.push(`   ${colors.dim}${cmd.explanation}${colors.reset}`);
   lines.push('');
 
@@ -137,10 +125,14 @@ function formatCommand(cmd: CommandSuggestion, number: number): string[] {
 
 function getRiskColor(level: string): string {
   switch (level) {
-    case 'low': return colors.green;
-    case 'medium': return colors.yellow;
-    case 'high': return colors.red;
-    default: return colors.reset;
+    case 'low':
+      return colors.green;
+    case 'medium':
+      return colors.yellow;
+    case 'high':
+      return colors.red;
+    default:
+      return colors.reset;
   }
 }
 
@@ -148,10 +140,6 @@ function getRiskBadge(level: string): string {
   const badge = `[${level.toUpperCase()}]`;
   const color = getRiskColor(level);
   return `${color}${badge}${colors.reset}`;
-}
-
-export function renderStreamingChunk(chunk: string): void {
-  process.stdout.write(chunk);
 }
 
 export function renderSpinner(text: string): () => void {

@@ -17,7 +17,6 @@ import type { TermwhatResponse } from './types.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Read package.json for version
 const packageJson = JSON.parse(
   readFileSync(join(__dirname, '../package.json'), 'utf-8')
 );
@@ -29,7 +28,6 @@ program
   .description('AI-powered terminal command suggestions with multi-provider support')
   .version(packageJson.version);
 
-// Setup command
 program
   .command('setup')
   .description('Configure termwhat settings')
@@ -38,10 +36,12 @@ program
     process.exit(0);
   });
 
-// Main command
 program
   .argument('[question...]', 'Question to ask (if omitted, enters REPL mode)')
-  .option('-p, --provider <type>', 'Provider to use (ollama, openai, anthropic, openrouter)')
+  .option(
+    '-p, --provider <type>',
+    'Provider to use (ollama, ollama-cloud, openai, anthropic, openrouter)'
+  )
   .option('-H, --host <url>', 'Ollama host URL (backward compatible)')
   .option('-m, --model <name>', 'Model to use')
   .option('-b, --brief', 'Brief mode: output only the command(s)')
@@ -49,22 +49,18 @@ program
   .option('-c, --copy', 'Copy primary command to clipboard')
   .option('--doctor', 'Run connectivity diagnostics')
   .action(async (questionParts: string[], options) => {
-    // Check for first-time setup
     if (!configExists()) {
       console.log('👋 Welcome to termwhat!\n');
       console.log('Looks like this is your first time running termwhat.');
-      console.log('Let\'s set up your configuration.\n');
+      console.log("Let's set up your configuration.\n");
       await runSetup(false);
       console.log('Setup complete! You can now use termwhat.\n');
     }
 
-    // Load config
     const config = loadConfig();
 
-    // Get provider config with environment variable overrides
     let providerConfig = getProviderConfig(config, options.provider);
 
-    // Apply CLI options (highest priority)
     if (options.host && providerConfig.provider === 'ollama') {
       providerConfig = { ...providerConfig, host: options.host };
     }
@@ -72,7 +68,6 @@ program
       providerConfig = { ...providerConfig, model: options.model };
     }
 
-    // Create provider instance
     let provider: AIProvider;
     try {
       provider = AIProviderFactory.create(providerConfig);
@@ -83,7 +78,6 @@ program
       process.exit(1);
     }
 
-    // Run doctor mode
     if (options.doctor) {
       await runDoctor(provider);
       return;
@@ -91,13 +85,11 @@ program
 
     const question = questionParts.join(' ').trim();
 
-    // If no question provided, enter REPL mode
     if (!question) {
       await startRepl(provider, config);
       return;
     }
 
-    // One-shot mode
     await handleOneShotQuery(question, provider, options);
   });
 
@@ -114,20 +106,25 @@ async function handleOneShotQuery(
 
     const response = await provider.chat(messages);
 
-    // JSON output mode
     if (options.json) {
       console.log(response);
       return;
     }
 
-    // Pretty print (brief or full)
     const output = renderResponse(response, options.brief);
     console.log(output);
 
-    // Copy to clipboard if requested
     if (options.copy) {
+      let parsed: TermwhatResponse;
       try {
-        const parsed: TermwhatResponse = JSON.parse(response);
+        parsed = JSON.parse(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`✗ Failed to parse response JSON for clipboard copy: ${message}\n`);
+        return;
+      }
+
+      try {
         if (parsed.commands && parsed.commands.length > 0) {
           const primaryCommand = parsed.commands[0].command;
           await copyToClipboard(primaryCommand);

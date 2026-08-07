@@ -18,20 +18,14 @@ export interface ConversationMessage {
   content: string;
 }
 
-// Provider types
-export enum ProviderType {
-  OLLAMA = 'ollama',
-  OPENAI = 'openai',
-  ANTHROPIC = 'anthropic',
-  OPENROUTER = 'openrouter',
-}
-
 // Provider-specific configs
 export interface OllamaProviderConfig {
   provider: 'ollama';
   host: string;
   model: string;
   timeout: number;
+  /** When true, talk to Ollama cloud (https://ollama.com) with Bearer auth */
+  cloud?: boolean;
 }
 
 export interface OpenAIProviderConfig {
@@ -68,11 +62,4 @@ export interface TermwhatConfig {
   providers: {
     [key: string]: ProviderConfig;
   };
-}
-
-// Legacy config (for migration)
-export interface OllamaConfig {
-  host: string;
-  model: string;
-  timeout: number;
 }

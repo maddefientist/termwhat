@@ -1,20 +1,43 @@
 import OpenAI from 'openai';
 import type { ConversationMessage, OpenAIProviderConfig } from '../types.js';
-import { BaseAIProvider, type ChatOptions, type HealthCheckResult } from './base.js';
+import {
+  BaseAIProvider,
+  ProviderError,
+  pickDefaultModel,
+  type ChatOptions,
+  type HealthCheckResult,
+} from './base.js';
+
+/** Conservative fallback when live discovery is unavailable.
+ *  Prefer runtime resolution via client.models.list(). */
+export const OPENAI_FALLBACK_MODEL = 'gpt-4o';
+
+export interface OpenAIClientInit {
+  /** Explicit API key — when set, TERMWHAT_OPENAI_API_KEY is not read */
+  apiKey?: string;
+  defaultHeaders?: Record<string, string>;
+  /** Error message if no key is found */
+  missingKeyError?: string;
+}
 
 export class OpenAIProvider extends BaseAIProvider {
   protected config: OpenAIProviderConfig;
   protected client: OpenAI;
   protected baseUrl: string;
 
-  constructor(config: OpenAIProviderConfig) {
+  constructor(config: OpenAIProviderConfig, init: OpenAIClientInit = {}) {
     super(config.timeout);
     this.config = config;
     this.baseUrl = config.baseUrl || 'https://api.openai.com/v1';
 
-    const apiKey = process.env.TERMWHAT_OPENAI_API_KEY;
+    const apiKey =
+      init.apiKey !== undefined ? init.apiKey : process.env.TERMWHAT_OPENAI_API_KEY;
+
     if (!apiKey) {
-      throw new Error('TERMWHAT_OPENAI_API_KEY environment variable is not set');
+      throw new Error(
+        init.missingKeyError ||
+          'TERMWHAT_OPENAI_API_KEY environment variable is not set'
+      );
     }
 
     this.client = new OpenAI({
@@ -22,6 +45,7 @@ export class OpenAIProvider extends BaseAIProvider {
       baseURL: this.baseUrl,
       organization: config.organization,
       timeout: config.timeout,
+      defaultHeaders: init.defaultHeaders,
     });
   }
 
@@ -49,7 +73,7 @@ export class OpenAIProvider extends BaseAIProvider {
 
     try {
       const models = await this.client.models.list();
-      const modelNames = [];
+      const modelNames: string[] = [];
       for await (const model of models) {
         modelNames.push(model.id);
       }
@@ -57,62 +81,75 @@ export class OpenAIProvider extends BaseAIProvider {
       const responseTime = Date.now() - startTime;
       return { healthy: true, models: modelNames, responseTime };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { healthy: false, error: message };
+      return this.toHealthError(error);
     }
   }
 
   async listModels(): Promise<string[]> {
     try {
       const models = await this.client.models.list();
-      const modelNames = [];
+      const modelNames: string[] = [];
       for await (const model of models) {
         modelNames.push(model.id);
       }
       return modelNames;
     } catch (error) {
-      throw new Error(`Failed to list models: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`Failed to list OpenAI models: ${message}`);
+      return [];
     }
   }
 
-  async chat(messages: ConversationMessage[], options?: ChatOptions): Promise<string> {
-    const onChunk = options?.onChunk;
+  /** Resolve a sensible default model from the live catalog. */
+  async resolveDefaultModel(): Promise<string> {
+    const models = await this.listModels();
+    return pickDefaultModel(
+      models,
+      [
+        /^gpt-5(\.\d+)?$/i,
+        /^gpt-5/i,
+        /^gpt-4o$/i,
+        /^gpt-4\.1$/i,
+        /^o3$/i,
+      ],
+      OPENAI_FALLBACK_MODEL
+    );
+  }
 
+  async chat(messages: ConversationMessage[], _options?: ChatOptions): Promise<string> {
     try {
-      if (onChunk) {
-        // Streaming mode
-        const stream = await this.client.chat.completions.create({
-          model: this.config.model,
-          messages: messages.map(m => ({ role: m.role, content: m.content })),
-          temperature: 0.7,
-          response_format: { type: 'json_object' },
-          stream: true,
-        });
+      const response = await this.client.chat.completions.create({
+        model: this.config.model,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+        stream: false,
+      });
 
-        let fullResponse = '';
-        for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || '';
-          if (content) {
-            fullResponse += content;
-            onChunk(content);
-          }
-        }
-
-        return fullResponse;
-      } else {
-        // Non-streaming mode
-        const response = await this.client.chat.completions.create({
-          model: this.config.model,
-          messages: messages.map(m => ({ role: m.role, content: m.content })),
-          temperature: 0.7,
-          response_format: { type: 'json_object' },
-          stream: false,
-        });
-
-        return response.choices[0]?.message?.content || '';
-      }
+      return response.choices[0]?.message?.content || '';
     } catch (error) {
-      throw new Error(`OpenAI API error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw this.toProviderError(error, 'OpenAI');
     }
   }
+
+  protected toHealthError(error: unknown): HealthCheckResult {
+    const status = extractStatus(error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { healthy: false, error: message, status };
+  }
+
+  protected toProviderError(error: unknown, label: string): ProviderError {
+    const status = extractStatus(error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new ProviderError(`${label} API error: ${message}`, status);
+  }
+}
+
+function extractStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object') {
+    const e = error as { status?: number; statusCode?: number };
+    if (typeof e.status === 'number') return e.status;
+    if (typeof e.statusCode === 'number') return e.statusCode;
+  }
+  return undefined;
 }
