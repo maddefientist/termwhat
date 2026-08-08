@@ -8,9 +8,9 @@
 
 - Quickly discover terminal commands without searching documentation
 - Get safe, validated suggestions with risk warnings
-- Flexible: supports local Ollama or cloud AI providers
-- Privacy-first option: runs entirely on local infrastructure via Ollama
-- Network-accessible across home lab environment
+- Flexible: Ollama-first (local or Ollama cloud), with OpenAI/Anthropic/OpenRouter as options
+- Privacy-first by default: with local Ollama, no question ever leaves the machine
+- Works against a remote Ollama host when you'd rather not run the model locally
 
 ## Stack
 
@@ -131,39 +131,35 @@ interface CommandSuggestion {
 }
 ```
 
-## Deployment Targets
+## Distribution
 
-- **Primary:** Docker container on home network
-- **Access:** Network-accessible via LAN
-- **Ollama Location:** Can be local or remote (configurable)
+- **Primary:** npm (`npm install -g termwhat`)
+- **Alternatives:** curl installer, from source, Docker Compose (bundles Ollama)
+- **Ollama Location:** local, remote host, or Ollama cloud (configurable)
 
-## Current Status
+## Current Status (3.0.0)
 
-- ✅ Multi-provider support implemented (Ollama, OpenAI, Anthropic, OpenRouter)
+- ✅ Ollama-first defaults; Ollama cloud supported
+- ✅ Model lists discovered dynamically per provider — no hardcoded lists
 - ✅ Provider abstraction layer with factory pattern
-- ✅ Automatic config migration from legacy format
-- ✅ Enhanced setup wizard with API key management
-- ✅ REPL mode with provider switching
-- ✅ Provider-agnostic health checks
-- ✅ TypeScript compiles successfully
-- ✅ Dependencies installed
-- ⏳ Needs testing with actual providers
-- ⏳ Docker images not yet built
+- ✅ Automatic config migration; corrupt configs backed up rather than overwritten
+- ✅ Setup wizard with masked key entry and correct fish/bash/zsh syntax
+- ✅ REPL with provider/model/host switching
+- ✅ Provider-agnostic health checks (`--doctor`)
+- ✅ 25 hermetic `node:test` tests; ESLint v9 flat config; CI on Node 20/22
+- ✅ MIT licensed with full community docs
+- ⏳ Not yet published to npm (needs `NPM_TOKEN` repo secret)
 
 ## Next Steps
 
-1. Test backward compatibility with existing Ollama setups
-2. Test OpenAI provider integration
-3. Test Anthropic provider integration
-4. Test OpenRouter provider integration
-5. Test REPL provider switching
-6. Test config migration from old format
-7. Update Docker configuration for multi-provider support
-8. Deploy to home network
+1. Set the `NPM_TOKEN` repository secret, then tag `v3.0.0` to publish
+2. Set the GitHub repo description and topics
+3. Triage open Dependabot PRs (TypeScript 7 and ESLint 10 are majors — deliberate calls)
+4. Consider a demo GIF/asciinema cast for the README
 
 ## Notes
 
-- Model default: `llama3.2` (balanced performance/speed)
+- Model defaults: `qwen3.5:4b` local, `gpt-oss:120b` on Ollama cloud
 - Supports streaming responses (currently collected but not displayed mid-stream)
 - Conversation history limited to last 10 turns in REPL
 - Cross-platform clipboard: macOS (pbcopy), Linux (xclip/xsel), Windows (clip)
