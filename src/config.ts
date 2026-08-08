@@ -159,7 +159,7 @@ export function loadConfig(): TermwhatConfig {
     }
 
     return migrateModernConfig(parsed);
-  } catch (error) {
+  } catch (_error) {
     // Corrupt file: back up and warn — do not silently overwrite without a trail
     try {
       if (existsSync(CONFIG_PATH)) {

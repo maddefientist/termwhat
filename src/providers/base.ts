@@ -9,6 +9,7 @@ export interface HealthCheckResult {
   status?: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- intentionally empty marker; kept for future streaming opts and stable call signatures
 export interface ChatOptions {
   // intentionally empty — streaming removed in 3.0 (was unused by REPL)
 }
