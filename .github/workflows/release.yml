@@ -12,6 +12,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Surfaced as an env var because the `secrets` context is not available
+    # inside step-level `if:` conditions — referencing it there makes the whole
+    # workflow file invalid, not just the step.
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +37,7 @@ jobs:
         run: npm test
 
       - name: Publish to npm
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        if: env.NPM_TOKEN != ''
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
