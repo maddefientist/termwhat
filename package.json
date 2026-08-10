@@ -53,10 +53,10 @@
     "openai": "^7.4.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "eslint": "^9.39.5",
-    "tsx": "^4.0.0",
-    "typescript": "^5.4.0",
-    "typescript-eslint": "^8.66.0"
+    "@types/node": "^26.1.2",
+    "eslint": "^10.8.0",
+    "tsx": "^4.23.8",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
   }
 }
