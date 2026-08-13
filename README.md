@@ -1,11 +1,5 @@
 <div align="center">
 
-```
- ┌─┐┌─┐┬─┐┌┬┐┬ ┬┬ ┬┌─┐┌┬┐
- ├┤ ├┤ ├┬┘│││├─┤├─┤├─┤ │
- ┴  └─┘┴└─┴ ┴┴ ┴┴ ┴┴ ┴ ┴
-```
-
 # termwhat
 
 **Stop googling "how to [insert command here]" and just ask your terminal instead.**
@@ -53,6 +47,16 @@ Verification:
 ```
 
 <sub>Real output, lightly trimmed for length. Ollama + `qwen3.5:4b`, running locally.</sub>
+
+In a hurry? `--brief` skips the reasoning and hands you the command:
+
+```console
+$ termwhat -b list open network ports
+ss -tulpn
+netstat -tulpn
+```
+
+Inside the REPL, `/term <question>` does the same thing — short answer, no lecture.
 
 ## Why
 
@@ -138,7 +142,7 @@ Run `termwhat` with no arguments. Prompt shows `[provider:model]>`.
 | `/models` | List models available from the current provider |
 | `/model <name>` | Switch model |
 | `/host <url>` | Point at a different Ollama host |
-| `/term <question>` | Ask without leaving the REPL |
+| `/term <question>` | Ask, but answer **short** — command only, no explanation (same as `--brief`) |
 | `/history` | Recent turns |
 | `/doctor` | Run diagnostics |
 | `/clear` | Clear the screen |
