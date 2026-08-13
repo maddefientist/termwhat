@@ -48,15 +48,17 @@ Verification:
 
 <sub>Real output, lightly trimmed for length. Ollama + `qwen3.5:4b`, running locally.</sub>
 
-In a hurry? `--brief` skips the reasoning and hands you the command:
+In a hurry? Use **`term`** — the same tool, answering with the command only:
 
 ```console
-$ termwhat -b list open network ports
-ss -tulpn
-netstat -tulpn
+$ term count lines in a file
+wc -l filename.txt
+awk 'END{print NR}' filename.txt
 ```
 
-Inside the REPL, `/term <question>` does the same thing — short answer, no lecture.
+Two commands, one tool: **`termwhat` explains, `term` just answers.** Each can borrow the
+other's behaviour with a flag — `termwhat --brief` shortens, `term --full` expands. Inside the
+REPL, `/term <question>` is the short form too.
 
 ## Why
 
@@ -116,10 +118,14 @@ termwhat "recursively find files over 100MB"
 ## Usage
 
 ```bash
-termwhat <your question>          # one-shot
+termwhat <your question>          # one-shot, with explanations
+term <your question>              # one-shot, command only
 termwhat                          # no question drops you into the REPL
 termwhat setup                    # reconfigure
 ```
+
+Both binaries take the same flags, except each only offers the one that changes its own output:
+`termwhat` has `-b, --brief`; `term` has `-f, --full`.
 
 | Flag | What it does |
 | --- | --- |

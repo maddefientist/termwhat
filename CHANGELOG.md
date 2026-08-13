@@ -7,10 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - unreleased/pending
+## [3.1.0] - 2026-08-13
 
-The "actually, Ollama first" release. Not tagged yet — landing here as it
-comes together.
+The "fine, you can have a shorter word" release.
+
+### Added
+
+- **A second command: `term`.** Same tool, but it answers with the command and
+  nothing else — for when you know what you're doing and just need the
+  incantation. `termwhat` still explains itself.
+- `term --full` when you want the explanation after all, mirroring
+  `termwhat --brief` in the other direction.
+
+### Fixed
+
+- The `bin` entry was declared as `./dist/index.js`. npm silently **strips**
+  bin entries with a `./` prefix when publishing, which would have installed
+  a `termwhat` package containing no `termwhat` command. Now guarded by a test.
+- `dist/` is cleaned before each build, so deleted source files stop
+  reappearing in the published tarball as ghosts.
+
+## [3.0.0] - 2026-08-13
+
+The "actually, Ollama first" release.
 
 ### Changed
 
