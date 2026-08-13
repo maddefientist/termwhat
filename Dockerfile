@@ -30,7 +30,7 @@ COPY package.json ./
 
 # Default to Docker network Ollama host
 ENV TERMWHAT_OLLAMA_HOST=http://ollama:11434
-ENV TERMWHAT_MODEL=qwen3.5:4b
+ENV TERMWHAT_MODEL=qwen3.5:9b
 ENV NODE_ENV=production
 ENV DOCKER=true
 

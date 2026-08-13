@@ -38,6 +38,29 @@ function formatBriefResponse(response: TermwhatResponse): string {
   return commandsToShow.map((cmd) => cmd.command).join('\n');
 }
 
+/**
+ * Detects a command string that has swallowed the rest of the JSON object.
+ *
+ * Smaller models sometimes emit output that parses as valid JSON while the
+ * `command` value actually contains the remaining fields verbatim, e.g.
+ *   "command": "find . -mmin -60\", \"explanation\": \"Finds files...\""
+ * That renders as a broken, unrunnable command. Since the whole promise here is
+ * "paste this into your shell", showing the parse-error path is safer than
+ * handing someone a mangled command.
+ */
+function looksLikeSwallowedJson(command: string): boolean {
+  return /"\s*,\s*"(explanation|risk_level|label|command)"\s*:/.test(command);
+}
+
+function isValidCommand(cmd: any): cmd is CommandSuggestion {
+  return (
+    cmd &&
+    typeof cmd.command === 'string' &&
+    cmd.command.trim().length > 0 &&
+    !looksLikeSwallowedJson(cmd.command)
+  );
+}
+
 function isValidResponse(obj: any): obj is TermwhatResponse {
   return (
     obj &&
@@ -45,7 +68,8 @@ function isValidResponse(obj: any): obj is TermwhatResponse {
     Array.isArray(obj.os_assumptions) &&
     Array.isArray(obj.commands) &&
     Array.isArray(obj.pitfalls) &&
-    Array.isArray(obj.verification_steps)
+    Array.isArray(obj.verification_steps) &&
+    obj.commands.every(isValidCommand)
   );
 }
 

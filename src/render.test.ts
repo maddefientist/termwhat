@@ -73,4 +73,58 @@ describe('renderResponse', () => {
     });
     assert.equal(renderResponse(empty, true), 'No commands found');
   });
+
+  // Captured verbatim from a real qwen3.5:4b response. It is VALID JSON — the
+  // model packed the remaining fields into the command string — so JSON.parse
+  // happily accepts it and brief mode printed an unrunnable command with raw
+  // JSON hanging off the end. Never hand that to someone's shell.
+  it('rejects a command that swallowed the rest of the JSON object', () => {
+    const swallowed = JSON.stringify({
+      title: 'Find files modified in the last hour',
+      os_assumptions: ['Linux/macOS'],
+      commands: [
+        {
+          label: 'Find recent files',
+          command:
+            'find /path/to/search -type f -mmin -60", "explanation": "Finds regular files modified within last 60 minutes.", "risk_level": "low',
+          explanation: 'Finds recent files.',
+          risk_level: 'low',
+        },
+      ],
+      pitfalls: [],
+      verification_steps: [],
+    });
+
+    const brief = renderResponse(swallowed, true);
+    // The error path deliberately echoes the raw payload so users can report
+    // it, so assert on what actually matters: the mangled string is never
+    // presented as a runnable command.
+    assert.match(brief, /Failed to parse|Invalid response structure/);
+    assert.ok(
+      !brief.startsWith('find /path/to/search'),
+      'must not present the mangled string as a command'
+    );
+
+    const full = renderResponse(swallowed, false);
+    assert.match(full, /Failed to parse|Invalid response structure/);
+  });
+
+  it('still accepts a command containing legitimate quotes', () => {
+    // The guard must not fire on ordinary shell quoting.
+    const quoted = JSON.stringify({
+      title: 'Search files',
+      os_assumptions: ['Linux'],
+      commands: [
+        {
+          label: 'Grep with quotes',
+          command: 'grep -r "TODO: fix" . --include="*.ts"',
+          explanation: 'Finds TODO comments.',
+          risk_level: 'low',
+        },
+      ],
+      pitfalls: [],
+      verification_steps: [],
+    });
+    assert.equal(renderResponse(quoted, true), 'grep -r "TODO: fix" . --include="*.ts"');
+  });
 });

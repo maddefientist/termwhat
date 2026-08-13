@@ -4,7 +4,7 @@ services:
     container_name: termwhat
     environment:
       - TERMWHAT_OLLAMA_HOST=${TERMWHAT_OLLAMA_HOST:-http://ollama:11434}
-      - TERMWHAT_MODEL=${TERMWHAT_MODEL:-qwen3.5:4b}
+      - TERMWHAT_MODEL=${TERMWHAT_MODEL:-qwen3.5:9b}
       - TERMWHAT_TIMEOUT=${TERMWHAT_TIMEOUT:-60000}
     stdin_open: true
     tty: true

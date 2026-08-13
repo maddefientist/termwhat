@@ -29,7 +29,10 @@ interface LegacyConfig {
 const CONFIG_PATH = join(homedir(), '.termwhatrc');
 const CONFIG_BAK_PATH = join(homedir(), '.termwhatrc.bak');
 
-const DEFAULT_TIMEOUT = 60000;
+// 120s, not 60s: the default local model has to be paged into memory on first
+// use, and a cold load regularly outruns a one-minute budget. Override with
+// TERMWHAT_TIMEOUT.
+const DEFAULT_TIMEOUT = 120000;
 const MIN_TIMEOUT = 1000;
 const MAX_TIMEOUT = 600000;
 

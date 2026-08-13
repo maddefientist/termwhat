@@ -19,34 +19,27 @@ pitfalls nobody mentions until after you've hit enter.
 ```console
 $ termwhat kill whatever is squatting on port 3000
 
-Kill process using port 3000
+Find and Kill Process on Port 3000
 
 Assumptions:
-  • Linux/macOS or Windows with appropriate tools available
+  • Linux/macOS or Windows WSL environment; providing both Unix/Windows variants
 
 Commands:
 
-1. Find process using port 3000 [LOW]
-   lsof -i :3000 || netstat -tlnp | grep :3000 || ss -tlnp | grep :3000
-   Identifies the PID(s) of process(es) currently listening on port 3000.
+1. Identify process using port 3000 (Unix-like) [LOW]
+   lsof -i :3000 || ss -tlnp | grep ':3000' || netstat -tlnp | grep ':3000'
+   Lists all processes listening on port 3000. Use lsof first, then fall back to ss or netstat.
 
-2. Gracefully kill process [LOW]
+2. Kill gracefully (Unix-like) [MEDIUM]
    kill -15 <PID>
-   Sends SIGTERM for graceful shutdown. Wait 5 seconds for process to close cleanly.
+   Sends SIGTERM signal allowing graceful shutdown with cleanup. Replace PID from previous step.
 
-3. Force kill if needed [HIGH]
+3. Force kill if graceful doesn't work (Unix-like) [HIGH]
    kill -9 <PID>
-   Forcibly terminate the process if graceful shutdown fails. Only use after waiting.
-
-⚠️  Pitfalls:
-  • Running kill without confirming the PID first - could kill the wrong process
-  • Using kill -9 without waiting - may cause data loss in long-running services
-
-Verification:
-  • Run 'lsof -i :3000' again to confirm the port is free
+   Forces termination immediately. Use only after SIGTERM fails; may cause data loss.
 ```
 
-<sub>Real output, lightly trimmed for length. Ollama + `qwen3.5:4b`, running locally.</sub>
+<sub>Real output, lightly trimmed for length. Ollama + `qwen3.5:9b`, running locally.</sub>
 
 In a hurry? Use **`term`** — the same tool, answering with the command only:
 
@@ -100,7 +93,7 @@ your questions anywhere. The cloud providers are there if you want them.
 
 | Provider | Key needed | Notes |
 | --- | --- | --- |
-| **Ollama (local)** ⭐ | none | Default. Runs on your machine. Ships with `qwen3.5:4b`. |
+| **Ollama (local)** ⭐ | none | Default. Runs on your machine. Defaults to `qwen3.5:9b`. |
 | **Ollama (cloud)** | `TERMWHAT_OLLAMA_API_KEY` | Big models, no GPU. Defaults to `gpt-oss:120b`. |
 | OpenAI | `TERMWHAT_OPENAI_API_KEY` | |
 | Anthropic | `TERMWHAT_ANTHROPIC_API_KEY` | |
@@ -111,7 +104,7 @@ waiting for a termwhat release. Run `/models` in the REPL to see what's availabl
 
 ```bash
 # fastest possible start, assuming ollama is already running
-ollama pull qwen3.5:4b
+ollama pull qwen3.5:9b
 termwhat "recursively find files over 100MB"
 ```
 
@@ -171,6 +164,7 @@ win over both.
 | `TERMWHAT_PROVIDER` | Default provider |
 | `TERMWHAT_MODEL` | Default model |
 | `TERMWHAT_OLLAMA_HOST` | Ollama host (default `http://localhost:11434`) |
+| `TERMWHAT_TIMEOUT` | Request timeout in ms (default `120000`). Raise it if a cold model load times out. |
 | `TERMWHAT_*_API_KEY` | Per-provider keys — see the provider table above |
 
 `NO_COLOR` is respected.

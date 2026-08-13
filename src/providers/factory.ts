@@ -24,10 +24,13 @@ export class AIProviderFactory {
   }
 
   private static enrichConfig(config: ProviderConfig): ProviderConfig {
+    const timeout = envTimeout() ?? config.timeout;
+
     switch (config.provider) {
       case 'ollama':
         return {
           ...config,
+          timeout,
           host: process.env.TERMWHAT_OLLAMA_HOST || config.host,
           model: process.env.TERMWHAT_MODEL || config.model,
         };
@@ -36,10 +39,29 @@ export class AIProviderFactory {
       case 'openrouter':
         return {
           ...config,
+          timeout,
           model: process.env.TERMWHAT_MODEL || config.model,
         };
       default:
         return config;
     }
   }
+}
+
+/**
+ * `TERMWHAT_TIMEOUT` (milliseconds) was documented in .env.example long before
+ * anything read it. It reads it now. Garbage and non-positive values are
+ * ignored with a warning rather than silently disabling the timeout.
+ */
+function envTimeout(): number | undefined {
+  const raw = process.env.TERMWHAT_TIMEOUT;
+  if (raw === undefined || raw.trim() === '') return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`Ignoring invalid TERMWHAT_TIMEOUT "${raw}" (expected a positive number of ms)`);
+    return undefined;
+  }
+
+  return parsed;
 }

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-08-13
+
+Small release, but it stops the tool handing you a command you can't run.
+
+### Fixed
+
+- **Malformed suggestions are no longer printed as commands.** Smaller models
+  occasionally return output that is *valid JSON* while the `command` field has
+  swallowed the rest of the object — so you'd get
+  `find . -mmin -60", "explanation": "...` presented as something to paste into
+  a shell. Those responses now take the parse-error path instead. Ordinary
+  shell quoting (`grep -r "TODO: fix" .`) is unaffected.
+
+- **`TERMWHAT_TIMEOUT` now actually works.** It had been documented in
+  `.env.example` for two major versions while nothing read it, so the
+  documented way out of a slow cold start did not exist. Invalid values are
+  ignored with a warning instead of disabling the timeout entirely.
+- **Timeout errors say something useful.** A cold model load used to surface as
+  a bare `Request aborted`. It now names the elapsed budget, explains that a
+  first load is slow, and points at `TERMWHAT_TIMEOUT`.
+
+### Changed
+
+- **Default local model is now `qwen3.5:9b`** (was `qwen3.5:4b`). This tool asks
+  the model for strict JSON, and 4B-class models were not reliably producing it.
+  Bigger first pull, output you can trust. Override with `TERMWHAT_MODEL` or
+  `--model` if you want the smaller one back.
+- **Default timeout raised to 120s** (was 60s), because the larger default model
+  needs longer to page in on first use.
+
 ## [3.1.0] - 2026-08-13
 
 The "fine, you can have a shorter word" release.

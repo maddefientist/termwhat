@@ -3,7 +3,22 @@ import type { ConversationMessage, OllamaProviderConfig } from '../types.js';
 import { BaseAIProvider, ProviderError, type ChatOptions, type HealthCheckResult } from './base.js';
 
 export const OLLAMA_CLOUD_HOST = 'https://ollama.com';
-export const DEFAULT_OLLAMA_LOCAL_MODEL = 'qwen3.5:4b';
+// 9B rather than 4B: this tool asks the model for strict JSON, and 4B-class
+// models intermittently emit structurally broken objects (fields swallowed
+// into the command string). Costs a larger first pull, buys reliable output.
+export const DEFAULT_OLLAMA_LOCAL_MODEL = 'qwen3.5:9b';
+
+/**
+ * Timeouts here are usually a cold model load, not a hung server — Ollama has
+ * to page the weights in on first use. Say so, and point at the way out.
+ */
+export function timeoutMessage(timeout: number): string {
+  return (
+    `Request timed out after ${timeout}ms. ` +
+    'If the model was not already loaded, the first request can take much longer — ' +
+    'try again once it is warm, or raise the limit with TERMWHAT_TIMEOUT (milliseconds).'
+  );
+}
 export const DEFAULT_OLLAMA_CLOUD_MODEL = 'gpt-oss:120b';
 
 export class OllamaProvider extends BaseAIProvider {
@@ -154,7 +169,7 @@ export class OllamaProvider extends BaseAIProvider {
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error(`Request timed out after ${this.timeout}ms`);
+        throw new Error(timeoutMessage(this.timeout));
       }
       throw error;
     } finally {
@@ -186,7 +201,7 @@ export class OllamaProvider extends BaseAIProvider {
     });
 
     if (signal?.aborted) {
-      throw new Error('Request aborted');
+      throw new Error(timeoutMessage(this.timeout));
     }
 
     return response.message.content;
